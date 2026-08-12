@@ -1,20 +1,15 @@
-// ==========================================
-// FOOD OS - MOTOR DE CONEXIÓN FIREBASE
-// ==========================================
-
 const FIREBASE_URL = "https://food-os-system-default-rtdb.firebaseio.com";
 
 const fondos = [
-    "https://i.imgur.com/TcyHW1I.jpeg", // Azul
-    "https://i.imgur.com/WKCXN5q.jpeg", // Amarillo
-    "https://i.imgur.com/lEXZ0VI.jpeg", // Cian
-    "https://i.imgur.com/YHv9Sjh.jpeg", // Rojo
-    "https://i.imgur.com/TYbsoO3.jpeg", // Rosa
-    "https://i.imgur.com/OscCey8.jpeg"  // Verde
+    "https://i.imgur.com/TcyHW1I.jpeg",
+    "https://i.imgur.com/WKCXN5q.jpeg",
+    "https://i.imgur.com/lEXZ0VI.jpeg",
+    "https://i.imgur.com/YHv9Sjh.jpeg",
+    "https://i.imgur.com/TYbsoO3.jpeg",
+    "https://i.imgur.com/OscCey8.jpeg"
 ];
 let fondoIndex = 0;
 
-// JSON receptor dinámico en memoria
 let currentBusinessData = {
     business_id: null,
     business_name: "",
@@ -24,15 +19,14 @@ let currentBusinessData = {
 };
 
 let html5QrcodeScanner = null;
-
-// --- NAVEGACIÓN Y ESCÁNER QR ---
+let inputPin = "";
 
 function abrirEscaner() {
     document.getElementById('welcome-screen').classList.add('hidden');
     document.getElementById('scanner-screen').classList.remove('hidden');
     
     if (typeof Html5QrcodeScanner !== "undefined") {
-        html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: 200 }, false);
+        html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: 180 }, false);
         html5QrcodeScanner.render((token) => {
             if(html5QrcodeScanner) html5QrcodeScanner.clear();
             procesarTokenAcceso(token);
@@ -46,53 +40,40 @@ function validarTokenManual() {
         if(html5QrcodeScanner) html5QrcodeScanner.clear();
         procesarTokenAcceso(token);
     } else {
-        alert("Por favor ingresa un token válido.");
+        alert("Por favor ingresa un código válido.");
     }
 }
 
-// --- CONEXIÓN DIRECTA Y CONTROL DE SUSCRIPCIÓN ("status") ---
-
 function procesarTokenAcceso(token) {
     const urlConsulta = `${FIREBASE_URL}/businesses/${token}.json`;
-    console.log("Consultando servidor de Firebase:", urlConsulta);
 
     fetch(urlConsulta)
         .then(res => {
-            if (!res.ok) {
-                throw new Error(`Respuesta de red no OK (Código HTTP: ${res.status})`);
-            }
+            if (!res.ok) throw new Error(`HTTP: ${res.status}`);
             return res.json();
         })
         .then(data => {
             if (data) {
-                // VERIFICAR SI EL NEGOCIO ESTÁ SUSPENDIDO
                 if (data.status === "suspended") {
-                    alert("🚫 SERVICIO SUSPENDIDO\n\nEste negocio está deshabilitado por falta de pago o mantenimiento. Contacta a Food OS.");
+                    alert("🚫 SERVICIO SUSPENDIDO\n\nEste negocio está deshabilitado por falta de pago.");
                     location.reload();
                     return;
                 }
 
-                // SI ESTÁ ACTIVO, INYECTAMOS LA INFO AL JSON
                 currentBusinessData = data;
-                
-                // Actualizar el nombre en vivo en la pantalla azul
                 document.getElementById('business-title').innerText = currentBusinessData.business_name;
-                
-                // Transición de pantallas
                 document.getElementById('scanner-screen').classList.add('hidden');
                 document.getElementById('lockscreen').classList.remove('hidden');
                 iniciarReloj();
+                iniciarSoporteTeclado();
             } else {
-                alert("❌ El Token o QR ingresado no existe en el servidor.");
+                alert("❌ El código ingresado no existe.");
             }
         })
         .catch(err => {
-            console.error("Error en Fetch:", err);
-            alert("⚠️ DETALLE DEL ERROR AL CONECTAR:\n" + err.message);
+            alert("⚠️ Error al conectar con Firebase.");
         });
 }
-
-// --- RELOJ Y REGISTRO ---
 
 function iniciarReloj() {
     setInterval(() => {
@@ -102,20 +83,25 @@ function iniciarReloj() {
     }, 1000);
 }
 
-// --- TECLADO PIN Y ACCESO ---
-
-let inputPin = "";
-
+// === TECLADO DUAL (PANTALLA Y FÍSICO/MÓVIL) ===
 function pressPin(n) {
     if (inputPin.length < 4) {
         inputPin += n;
-        document.getElementById('pin-display').value = "•".repeat(inputPin.length);
+        actualizarPinDisplay();
     }
 }
 
-function clearPin() {
-    inputPin = "";
-    document.getElementById('pin-display').value = "";
+function actualizarPinDisplay() {
+    document.getElementById('pin-display').value = "•".repeat(inputPin.length);
+}
+
+function actionExitOrClear() {
+    if (inputPin.length > 0) {
+        inputPin = inputPin.slice(0, -1);
+        actualizarPinDisplay();
+    } else {
+        location.reload();
+    }
 }
 
 function submitPin() {
@@ -123,15 +109,37 @@ function submitPin() {
         const rol = currentBusinessData.pins[inputPin];
         const horaEntrada = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         
-        alert(`🔓 ¡ENTRADA CORRECTA!\n\nLocal: ${currentBusinessData.business_name}\nRol: ${rol.toUpperCase()}\nHora de Asistencia: ${horaEntrada}`);
-        clearPin();
+        alert(`🔓 ¡ENTRADA CORRECTA!\n\nLocal: ${currentBusinessData.business_name}\nRol: ${rol.toUpperCase()}\nHora: ${horaEntrada}`);
+        inputPin = "";
+        actualizarPinDisplay();
     } else {
-        alert("❌ PIN Incorrecto para este negocio.");
-        clearPin();
+        alert("❌ PIN Incorrecto.");
+        inputPin = "";
+        actualizarPinDisplay();
     }
 }
 
-// --- CAMBIO DE FONDO ESTILO TIKTOK ---
+function iniciarSoporteTeclado() {
+    const pinInputEl = document.getElementById('pin-display');
+    
+    pinInputEl.addEventListener('input', (e) => {
+        const val = e.target.value.replace(/[^0-9]/g, '');
+        inputPin = val.slice(0, 4);
+        actualizarPinDisplay();
+    });
+
+    window.addEventListener('keydown', (e) => {
+        if (document.getElementById('lockscreen').classList.contains('hidden')) return;
+
+        if (e.key >= '0' && e.key <= '9') {
+            pressPin(e.key);
+        } else if (e.key === 'Backspace') {
+            actionExitOrClear();
+        } else if (e.key === 'Enter') {
+            submitPin();
+        }
+    });
+}
 
 function cambiarFondoLockscreen() {
     fondoIndex = (fondoIndex + 1) % fondos.length;
