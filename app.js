@@ -1,4 +1,7 @@
-// PON AQUÍ TU URL REAL DE FIREBASE:
+// ==========================================
+// FOOD OS - MOTOR DE CONEXIÓN FIREBASE
+// ==========================================
+
 const FIREBASE_URL = "https://food-os-system-default-rtdb.firebaseio.com";
 
 const fondos = [
@@ -11,7 +14,7 @@ const fondos = [
 ];
 let fondoIndex = 0;
 
-// EL JSON VACÍO EN MEMORIA (Receptor Dinámico)
+// JSON receptor dinámico en memoria
 let currentBusinessData = {
     business_id: null,
     business_name: "",
@@ -21,6 +24,8 @@ let currentBusinessData = {
 };
 
 let html5QrcodeScanner = null;
+
+// --- NAVEGACIÓN Y ESCÁNER QR ---
 
 function abrirEscaner() {
     document.getElementById('welcome-screen').classList.add('hidden');
@@ -40,15 +45,24 @@ function validarTokenManual() {
     if(token !== "") {
         if(html5QrcodeScanner) html5QrcodeScanner.clear();
         procesarTokenAcceso(token);
+    } else {
+        alert("Por favor ingresa un token válido.");
     }
 }
 
-// === CONEXIÓN DIRECTA Y CONTROL DE SUSCRIPCIÓN ("status") ===
-function procesarTokenAcceso(token) {
-    console.log("Consultando servidor de Firebase para token:", token);
+// --- CONEXIÓN DIRECTA Y CONTROL DE SUSCRIPCIÓN ("status") ---
 
-    fetch(`${FIREBASE_URL}/businesses/${token}.json`)
-        .then(res => res.json())
+function procesarTokenAcceso(token) {
+    const urlConsulta = `${FIREBASE_URL}/businesses/${token}.json`;
+    console.log("Consultando servidor de Firebase:", urlConsulta);
+
+    fetch(urlConsulta)
+        .then(res => {
+            if (!res.ok) {
+                throw new Error(`Respuesta de red no OK (Código HTTP: ${res.status})`);
+            }
+            return res.json();
+        })
         .then(data => {
             if (data) {
                 // VERIFICAR SI EL NEGOCIO ESTÁ SUSPENDIDO
@@ -58,7 +72,7 @@ function procesarTokenAcceso(token) {
                     return;
                 }
 
-                // SI ESTÁ ACTIVO ("active"), INYECTAMOS LA INFO EN EL JSON VACÍO
+                // SI ESTÁ ACTIVO, INYECTAMOS LA INFO AL JSON
                 currentBusinessData = data;
                 
                 // Actualizar el nombre en vivo en la pantalla azul
@@ -69,14 +83,16 @@ function procesarTokenAcceso(token) {
                 document.getElementById('lockscreen').classList.remove('hidden');
                 iniciarReloj();
             } else {
-                alert("❌ El Token o QR no existe en el servidor.");
+                alert("❌ El Token o QR ingresado no existe en el servidor.");
             }
         })
         .catch(err => {
-            console.error(err);
-            alert("Error al conectar con los servidores de Firebase.");
+            console.error("Error en Fetch:", err);
+            alert("⚠️ DETALLE DEL ERROR AL CONECTAR:\n" + err.message);
         });
 }
+
+// --- RELOJ Y REGISTRO ---
 
 function iniciarReloj() {
     setInterval(() => {
@@ -85,6 +101,8 @@ function iniciarReloj() {
             now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     }, 1000);
 }
+
+// --- TECLADO PIN Y ACCESO ---
 
 let inputPin = "";
 
@@ -112,6 +130,8 @@ function submitPin() {
         clearPin();
     }
 }
+
+// --- CAMBIO DE FONDO ESTILO TIKTOK ---
 
 function cambiarFondoLockscreen() {
     fondoIndex = (fondoIndex + 1) % fondos.length;
