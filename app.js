@@ -1,5 +1,5 @@
 // PON AQUÍ TU URL REAL DE FIREBASE:
-const FIREBASE_URL = "https://food-os-system-default-rtdb.firebaseio.com/";
+const FIREBASE_URL = "https://food-os-system-default-rtdb.firebaseio.com";
 
 const fondos = [
     "https://i.imgur.com/TcyHW1I.jpeg", // Azul
