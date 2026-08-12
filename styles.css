@@ -1,0 +1,124 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+body {
+    background-color: #0d1117;
+    color: white;
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+}
+
+.screen {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    width: 100vw;
+    position: absolute;
+    top: 0;
+    left: 0;
+    transition: background-image 0.5s ease-in-out;
+}
+
+.hidden { display: none !important; }
+
+/* LOGO PANTALLA 1 */
+.logo-text { font-size: 4rem; font-weight: 800; }
+.orange { color: #ff6b00; }
+.silver { color: #e0e0e0; }
+
+#btn-iniciar {
+    margin-top: 30px;
+    padding: 16px 50px;
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: white;
+    background: linear-gradient(135deg, #ff8800, #ff4500);
+    border: none;
+    border-radius: 40px;
+    box-shadow: 0 10px 20px rgba(255, 107, 0, 0.4);
+    cursor: pointer;
+}
+
+/* TARJETAS GLASSMORPHISM */
+.glass-card {
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 24px;
+    padding: 30px;
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+    text-align: center;
+}
+
+/* LOCKSCREEN AZUL CON ESTILO */
+#lockscreen {
+    background-image: url('https://i.imgur.com/TcyHW1I.jpeg');
+    background-size: cover;
+    background-position: center;
+    flex-direction: row;
+    gap: 50px;
+}
+
+.clock { font-size: 5.5rem; font-weight: 200; }
+#business-title { font-size: 1.2rem; color: rgba(255, 255, 255, 0.8); }
+
+#pin-display {
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    height: 45px;
+    width: 180px;
+    border-radius: 12px;
+    margin: 15px 0;
+    text-align: center;
+    font-size: 2rem;
+    color: white;
+    letter-spacing: 8px;
+}
+
+.keypad {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+}
+
+.keypad button {
+    width: 65px;
+    height: 65px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(255, 255, 255, 0.15);
+    color: white;
+    font-size: 1.5rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.keypad button:active { background: rgba(255, 255, 255, 0.4); }
+
+/* BOTÓN SELECTOR TIKTOK */
+.theme-picker {
+    position: absolute;
+    bottom: 20px;
+    right: 20px;
+    background: rgba(255, 255, 255, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    backdrop-filter: blur(10px);
+    border-radius: 50%;
+    width: 50px;
+    height: 50px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    cursor: pointer;
+}
