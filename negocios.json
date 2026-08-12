@@ -1,0 +1,46 @@
+{
+  "businesses": {
+    "TOKEN_CUBITO_01": {
+      "business_id": "cubito_sushi_01",
+      "business_name": "Cubito Sushi 🍣",
+      "status": "active",
+      "pins": {
+        "1234": "caja",
+        "5555": "cocina",
+        "7777": "repartidor",
+        "9999": "admin"
+      },
+      "menu": [
+        { "id": 101, "name": "Roll Minecraftia", "price": 130 },
+        { "id": 102, "name": "Kushiage Bloque de Queso", "price": 75 }
+      ]
+    },
+    "TOKEN_NAVEGANTE_02": {
+      "business_id": "el_navegante_01",
+      "business_name": "El Navegante ⛵",
+      "status": "suspended",
+      "pins": {
+        "1111": "caja",
+        "2222": "cocina",
+        "3333": "repartidor"
+      },
+      "menu": [
+        { "id": 201, "name": "Tostada Capitán", "price": 95 },
+        { "id": 202, "name": "Caldazo de Camisón", "price": 160 }
+      ]
+    },
+    "TOKEN_ENEMIGOS_03": {
+      "business_id": "tacos_enemigos_01",
+      "business_name": "Tacos Enemigos 🌮",
+      "status": "active",
+      "pins": {
+        "4444": "caja",
+        "8888": "cocina"
+      },
+      "menu": [
+        { "id": 301, "name": "Taco de Asada Mortal", "price": 35 },
+        { "id": 302, "name": "Vampiro con Fuego", "price": 50 }
+      ]
+    }
+  }
+}
