@@ -1,7 +1,6 @@
-// REEMPLAZA ESTA URL POR LA TUYA DE FIREBASE:
-const FIREBASE_URL = "https://console.firebase.google.com/u/0/project/food-os-system/database/food-os-system-default-rtdb/data/~2F?hl=es";
+// PON AQUÍ TU URL REAL DE FIREBASE:
+const FIREBASE_URL = "https://food-os-system-default-rtdb.firebaseio.com/";
 
-// TUS 6 FONDOS OFICIALES DE IMGUR
 const fondos = [
     "https://i.imgur.com/TcyHW1I.jpeg", // Azul
     "https://i.imgur.com/WKCXN5q.jpeg", // Amarillo
@@ -12,16 +11,23 @@ const fondos = [
 ];
 let fondoIndex = 0;
 
-let currentBusiness = null;
+// EL JSON VACÍO EN MEMORIA (Receptor Dinámico)
+let currentBusinessData = {
+    business_id: null,
+    business_name: "",
+    status: "unregistered",
+    pins: {},
+    menu: []
+};
+
 let html5QrcodeScanner = null;
 
-// --- NAVEGACIÓN Y QR ---
 function abrirEscaner() {
     document.getElementById('welcome-screen').classList.add('hidden');
     document.getElementById('scanner-screen').classList.remove('hidden');
     
     if (typeof Html5QrcodeScanner !== "undefined") {
-        html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: 250 }, false);
+        html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: 200 }, false);
         html5QrcodeScanner.render((token) => {
             if(html5QrcodeScanner) html5QrcodeScanner.clear();
             procesarTokenAcceso(token);
@@ -37,27 +43,41 @@ function validarTokenManual() {
     }
 }
 
-// --- CONEXIÓN AL SERVIDOR REAL ---
+// === CONEXIÓN DIRECTA Y CONTROL DE SUSCRIPCIÓN ("status") ===
 function procesarTokenAcceso(token) {
+    console.log("Consultando servidor de Firebase para token:", token);
+
     fetch(`${FIREBASE_URL}/businesses/${token}.json`)
         .then(res => res.json())
         .then(data => {
             if (data) {
-                currentBusiness = data;
-                document.getElementById('business-title').innerText = data.business_name;
+                // VERIFICAR SI EL NEGOCIO ESTÁ SUSPENDIDO
+                if (data.status === "suspended") {
+                    alert("🚫 SERVICIO SUSPENDIDO\n\nEste negocio está deshabilitado por falta de pago o mantenimiento. Contacta a Food OS.");
+                    location.reload();
+                    return;
+                }
+
+                // SI ESTÁ ACTIVO ("active"), INYECTAMOS LA INFO EN EL JSON VACÍO
+                currentBusinessData = data;
                 
-                // Transición a Pantalla Azul
+                // Actualizar el nombre en vivo en la pantalla azul
+                document.getElementById('business-title').innerText = currentBusinessData.business_name;
+                
+                // Transición de pantallas
                 document.getElementById('scanner-screen').classList.add('hidden');
                 document.getElementById('lockscreen').classList.remove('hidden');
                 iniciarReloj();
             } else {
-                alert("❌ Token o QR no registrado en los servidores.");
+                alert("❌ El Token o QR no existe en el servidor.");
             }
         })
-        .catch(err => alert("Error de conexión con Firebase."));
+        .catch(err => {
+            console.error(err);
+            alert("Error al conectar con los servidores de Firebase.");
+        });
 }
 
-// --- RELOJ Y ASISTENCIA ---
 function iniciarReloj() {
     setInterval(() => {
         const now = new Date();
@@ -66,7 +86,6 @@ function iniciarReloj() {
     }, 1000);
 }
 
-// --- VALIDADOR DE PIN CON REGISTRO DE HORA DE ENTRADA ---
 let inputPin = "";
 
 function pressPin(n) {
@@ -82,19 +101,18 @@ function clearPin() {
 }
 
 function submitPin() {
-    if (currentBusiness && currentBusiness.pins[inputPin]) {
-        const rol = currentBusiness.pins[inputPin];
+    if (currentBusinessData.pins && currentBusinessData.pins[inputPin]) {
+        const rol = currentBusinessData.pins[inputPin];
         const horaEntrada = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         
-        alert(`🔓 ¡Acceso Correcto!\nRol: ${rol.toUpperCase()}\nHora de entrada registrada: ${horaEntrada}`);
+        alert(`🔓 ¡ENTRADA CORRECTA!\n\nLocal: ${currentBusinessData.business_name}\nRol: ${rol.toUpperCase()}\nHora de Asistencia: ${horaEntrada}`);
         clearPin();
     } else {
-        alert("❌ PIN Incorrecto.");
+        alert("❌ PIN Incorrecto para este negocio.");
         clearPin();
     }
 }
 
-// --- SELECTOR TIKTOK DE FONDOS ---
 function cambiarFondoLockscreen() {
     fondoIndex = (fondoIndex + 1) % fondos.length;
     document.getElementById('lockscreen').style.backgroundImage = `url('${fondos[fondoIndex]}')`;
