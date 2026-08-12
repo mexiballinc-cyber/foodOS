@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Food OS</title>
+    <link rel="stylesheet" href="styles.css">
+    <!-- Librería nativa para leer QR con cámara -->
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+</head>
+<body>
+
+    <!-- PANTALLA 1: BIENVENIDA -->
+    <div id="welcome-screen" class="screen active">
+        <div class="logo-container">
+            <h1 class="logo-text"><span class="orange">food</span><span class="silver">OS</span></h1>
+        </div>
+        <button id="btn-iniciar" onclick="abrirEscaner()">Iniciar</button>
+    </div>
+
+    <!-- PANTALLA 2: LECTOR QR / MANUAL -->
+    <div id="scanner-screen" class="screen hidden">
+        <div class="glass-card">
+            <h2>Escanea el QR del Local</h2>
+            <div id="reader"></div>
+            <div class="divider">--- O ---</div>
+            <div class="manual-input">
+                <input type="text" id="manual-token" placeholder="Ej: TOKEN_CUBITO_01">
+                <button onclick="validarTokenManual()">Acceder</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- PANTALLA 3: LOCKSCREEN (CONCEPTO AZUL CON ESTILO GLASS) -->
+    <div id="lockscreen" class="screen hidden">
+        <!-- Selector de Fondo flotante estilo TikTok -->
+        <button class="theme-picker" onclick="cambiarFondoLockscreen()">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>
+        </button>
+
+        <div class="clock-section">
+            <div class="clock" id="clock-display">00:00</div>
+            <p id="business-title">Cargando...</p>
+        </div>
+
+        <div class="pin-card glass-card">
+            <p class="pin-instruction">Ingrese PIN de Acceso</p>
+            <input type="password" id="pin-display" readonly maxlength="4">
+            
+            <div class="keypad">
+                <button onclick="pressPin('1')">1</button>
+                <button onclick="pressPin('2')">2</button>
+                <button onclick="pressPin('3')">3</button>
+                <button onclick="pressPin('4')">4</button>
+                <button onclick="pressPin('5')">5</button>
+                <button onclick="pressPin('6')">6</button>
+                <button onclick="pressPin('7')">7</button>
+                <button onclick="pressPin('8')">8</button>
+                <button onclick="pressPin('9')">9</button>
+                <button onclick="clearPin()" class="btn-action">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                </button>
+                <button onclick="pressPin('0')">0</button>
+                <button onclick="submitPin()" class="btn-action btn-ok">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
