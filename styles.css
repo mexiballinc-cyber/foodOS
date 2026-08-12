@@ -29,9 +29,12 @@ body {
 
 .hidden { display: none !important; }
 
-/* PANTALLA DE INICIO CON FONDO PERSONALIZADO Y LOGO */
+/* ==========================================
+   PANTALLA DE INICIO (OVERLAY OSCURO)
+   ========================================== */
 #welcome-screen {
-    background-image: url('https://i.imgur.com/irMrq2G.png');
+    /* Fondo con capa oscura al 75% para resaltar el logo */
+    background-image: linear-gradient(rgba(0, 0, 0, 0.75), rgba(0, 0, 0, 0.75)), url('https://i.imgur.com/irMrq2G.png');
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
@@ -45,12 +48,28 @@ body {
     width: 100%;
 }
 
+/* LOGO OFICIAL CON ANIMACIÓN FLOTANTE DINÁMICA */
 .food-os-logo {
     width: 85%;
-    max-width: 360px;
+    max-width: 380px;
     height: auto;
-    filter: drop-shadow(0px 8px 25px rgba(0, 0, 0, 0.6));
+    filter: drop-shadow(0px 12px 30px rgba(0, 0, 0, 0.7));
     object-fit: contain;
+    /* EFECTO DE MOVIMIENTO SUAVE */
+    animation: flotarLogo 4s ease-in-out infinite;
+}
+
+/* ANIMACIÓN KEYFRAMES */
+@keyframes flotarLogo {
+    0% {
+        transform: translateY(0px);
+    }
+    50% {
+        transform: translateY(-12px); /* Eleva el logo sutilmente */
+    }
+    100% {
+        transform: translateY(0px);
+    }
 }
 
 #btn-iniciar {
@@ -69,7 +88,9 @@ body {
 
 #btn-iniciar:active { transform: scale(0.95); }
 
-/* TARJETAS GLASSMORPHISM Y ESCÁNER QR */
+/* ==========================================
+   TARJETAS GLASSMORPHISM Y ESCÁNER QR
+   ========================================== */
 .glass-card {
     background: rgba(255, 255, 255, 0.08);
     backdrop-filter: blur(25px);
@@ -123,7 +144,9 @@ body {
     cursor: pointer;
 }
 
-/* LOCKSCREEN RESPONSIVO */
+/* ==========================================
+   LOCKSCREEN RESPONSIVO
+   ========================================== */
 #lockscreen {
     background-image: url('https://i.imgur.com/TcyHW1I.jpeg');
     background-size: cover;
@@ -191,7 +214,9 @@ body {
     cursor: pointer;
 }
 
-/* REGLAS RESPONSIVAS PARA MÓVILES Y PANTALLAS VERTICALES */
+/* ==========================================
+   PANTALLAS VERTICALES / MÓVILES
+   ========================================== */
 @media (max-width: 768px) {
     .lockscreen-content {
         flex-direction: column;
@@ -207,7 +232,7 @@ body {
     }
 
     .food-os-logo {
-        max-width: 280px;
+        max-width: 290px;
     }
 
     #btn-iniciar {
