@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Food OS</title>
     <link rel="stylesheet" href="styles.css">
-    <!-- Librería nativa para leer QR con cámara -->
+    <!-- Librería para el lector QR con la cámara -->
     <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
 </head>
 <body>
@@ -18,12 +18,26 @@
         <button id="btn-iniciar" onclick="abrirEscaner()">Iniciar</button>
     </div>
 
-    <!-- PANTALLA 2: LECTOR QR / MANUAL -->
+    <!-- PANTALLA 2: LECTOR QR / MANUAL GLASSMORPHISM -->
     <div id="scanner-screen" class="screen hidden">
-        <div class="glass-card">
-            <h2>Escanea el QR del Local</h2>
-            <div id="reader"></div>
-            <div class="divider">--- O ---</div>
+        <div class="glass-card scanner-card">
+            <div class="qr-icon-header">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#ff6b00" stroke-width="2">
+                    <rect x="3" y="3" width="7" height="7" rx="2"></rect>
+                    <rect x="14" y="3" width="7" height="7" rx="2"></rect>
+                    <rect x="14" y="14" width="7" height="7" rx="2"></rect>
+                    <rect x="3" y="14" width="7" height="7" rx="2"></rect>
+                </svg>
+            </div>
+            <h2>Escanear Código QR</h2>
+            <p class="subtitle">Coloque el QR del local frente a la cámara</p>
+            
+            <div class="qr-viewport-wrapper">
+                <div id="reader"></div>
+            </div>
+
+            <div class="divider"><span>o ingresa tu clave</span></div>
+
             <div class="manual-input">
                 <input type="text" id="manual-token" placeholder="Ej: TOKEN_CUBITO_01">
                 <button onclick="validarTokenManual()">Acceder</button>
@@ -31,20 +45,22 @@
         </div>
     </div>
 
-    <!-- PANTALLA 3: LOCKSCREEN (CONCEPTO AZUL CON ESTILO GLASS) -->
+    <!-- PANTALLA 3: LOCKSCREEN Y PALETA FONDOS TIKTOK -->
     <div id="lockscreen" class="screen hidden">
-        <!-- Selector de Fondo flotante estilo TikTok -->
         <button class="theme-picker" onclick="cambiarFondoLockscreen()">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <path d="M12 2a7 7 0 1 0 10 10"></path>
+            </svg>
         </button>
 
         <div class="clock-section">
             <div class="clock" id="clock-display">00:00</div>
-            <p id="business-title">Cargando...</p>
+            <p id="business-title">Cargando datos...</p>
         </div>
 
         <div class="pin-card glass-card">
-            <p class="pin-instruction">Ingrese PIN de Acceso</p>
+            <p class="pin-instruction">Ingresar PIN</p>
             <input type="password" id="pin-display" readonly maxlength="4">
             
             <div class="keypad">
@@ -58,11 +74,11 @@
                 <button onclick="pressPin('8')">8</button>
                 <button onclick="pressPin('9')">9</button>
                 <button onclick="clearPin()" class="btn-action">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
                 </button>
                 <button onclick="pressPin('0')">0</button>
                 <button onclick="submitPin()" class="btn-action btn-ok">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
                 </button>
             </div>
         </div>
