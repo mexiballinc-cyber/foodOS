@@ -2,10 +2,11 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Food OS</title>
+    <!-- FAVICON OFICIAL EN LA PESTAÑA -->
+    <link rel="icon" type="image/png" href="https://i.imgur.com/eZ3pxwv.png">
     <link rel="stylesheet" href="styles.css">
-    <!-- Librería para el lector QR con la cámara -->
     <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
 </head>
 <body>
@@ -13,16 +14,16 @@
     <!-- PANTALLA 1: BIENVENIDA -->
     <div id="welcome-screen" class="screen active">
         <div class="logo-container">
-            <h1 class="logo-text"><span class="orange">food</span><span class="silver">OS</span></h1>
+            <img src="https://i.imgur.com/U0xdLiV.png" alt="Food OS Logo" class="food-os-logo">
         </div>
         <button id="btn-iniciar" onclick="abrirEscaner()">Iniciar</button>
     </div>
 
-    <!-- PANTALLA 2: LECTOR QR / MANUAL GLASSMORPHISM -->
+    <!-- PANTALLA 2: LECTOR QR / ENTRADA CÓDIGO -->
     <div id="scanner-screen" class="screen hidden">
         <div class="glass-card scanner-card">
             <div class="qr-icon-header">
-                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#ff6b00" stroke-width="2">
+                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#ff6b00" stroke-width="2">
                     <rect x="3" y="3" width="7" height="7" rx="2"></rect>
                     <rect x="14" y="3" width="7" height="7" rx="2"></rect>
                     <rect x="14" y="14" width="7" height="7" rx="2"></rect>
@@ -39,13 +40,13 @@
             <div class="divider"><span>o ingresa tu clave</span></div>
 
             <div class="manual-input">
-                <input type="text" id="manual-token" placeholder="Ej: TOKEN_CUBITO_01">
+                <input type="text" id="manual-token" placeholder="Ingresa tu código de acceso" autocomplete="off">
                 <button onclick="validarTokenManual()">Acceder</button>
             </div>
         </div>
     </div>
 
-    <!-- PANTALLA 3: LOCKSCREEN Y PALETA FONDOS TIKTOK -->
+    <!-- PANTALLA 3: LOCKSCREEN -->
     <div id="lockscreen" class="screen hidden">
         <button class="theme-picker" onclick="cambiarFondoLockscreen()">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
@@ -54,32 +55,35 @@
             </svg>
         </button>
 
-        <div class="clock-section">
-            <div class="clock" id="clock-display">00:00</div>
-            <p id="business-title">Cargando datos...</p>
-        </div>
+        <div class="lockscreen-content">
+            <div class="clock-section">
+                <div class="clock" id="clock-display">00:00</div>
+                <p id="business-title">Cargando datos...</p>
+            </div>
 
-        <div class="pin-card glass-card">
-            <p class="pin-instruction">Ingresar PIN</p>
-            <input type="password" id="pin-display" readonly maxlength="4">
-            
-            <div class="keypad">
-                <button onclick="pressPin('1')">1</button>
-                <button onclick="pressPin('2')">2</button>
-                <button onclick="pressPin('3')">3</button>
-                <button onclick="pressPin('4')">4</button>
-                <button onclick="pressPin('5')">5</button>
-                <button onclick="pressPin('6')">6</button>
-                <button onclick="pressPin('7')">7</button>
-                <button onclick="pressPin('8')">8</button>
-                <button onclick="pressPin('9')">9</button>
-                <button onclick="clearPin()" class="btn-action">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
-                </button>
-                <button onclick="pressPin('0')">0</button>
-                <button onclick="submitPin()" class="btn-action btn-ok">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
-                </button>
+            <div class="pin-card glass-card">
+                <p class="pin-instruction">Ingresar PIN</p>
+                
+                <input type="password" id="pin-display" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off">
+                
+                <div class="keypad">
+                    <button onclick="pressPin('1')">1</button>
+                    <button onclick="pressPin('2')">2</button>
+                    <button onclick="pressPin('3')">3</button>
+                    <button onclick="pressPin('4')">4</button>
+                    <button onclick="pressPin('5')">5</button>
+                    <button onclick="pressPin('6')">6</button>
+                    <button onclick="pressPin('7')">7</button>
+                    <button onclick="pressPin('8')">8</button>
+                    <button onclick="pressPin('9')">9</button>
+                    <button onclick="actionExitOrClear()" class="btn-action">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                    </button>
+                    <button onclick="pressPin('0')">0</button>
+                    <button onclick="submitPin()" class="btn-action btn-ok">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                    </button>
+                </div>
             </div>
         </div>
     </div>
