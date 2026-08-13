@@ -26,11 +26,30 @@ function abrirEscaner() {
     document.getElementById('scanner-screen').classList.remove('hidden');
     
     if (typeof Html5QrcodeScanner !== "undefined") {
-        html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: 180 }, false);
-        html5QrcodeScanner.render((token) => {
+        // --- CONFIGURACIÓN DE ALTA TOLERANCIA Y VELOCIDAD ---
+        const config = {
+            fps: 15,
+            qrbox: function(viewfinderWidth, viewfinderHeight) {
+                // Toma el 70% de la pantalla del cuadro para darle más tolerancia a logos y formas
+                const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+                return {
+                    width: Math.floor(minEdge * 0.75),
+                    height: Math.floor(minEdge * 0.75)
+                };
+            },
+            experimentalFeatures: {
+                useBarCodeDetectorIfSupported: true
+            },
+            formatsToSupport: [ Html5QrcodeSupportedFormats.QR_CODE ]
+        };
+
+        html5QrcodeScanner = new Html5QrcodeScanner("reader", config, false);
+        html5QrcodeScanner.render((tokenLeido) => {
             if(html5QrcodeScanner) html5QrcodeScanner.clear();
-            procesarTokenAcceso(token);
-        }, () => {});
+            procesarTokenAcceso(tokenLeido);
+        }, (error) => {
+            // Silenciamos los errores de frame por frame para evitar avisos molestos en pantalla
+        });
     }
 }
 
@@ -44,8 +63,14 @@ function validarTokenManual() {
     }
 }
 
-function procesarTokenAcceso(token) {
-    const urlConsulta = `${FIREBASE_URL}/businesses/${token}.json`;
+function procesarTokenAcceso(rawToken) {
+    let cleanToken = rawToken.trim();
+    if (cleanToken.includes('/')) {
+        const parts = cleanToken.split('/');
+        cleanToken = parts[parts.length - 1] || parts[parts.length - 2];
+    }
+
+    const urlConsulta = `${FIREBASE_URL}/businesses/${cleanToken}.json`;
 
     fetch(urlConsulta)
         .then(res => {
@@ -67,11 +92,13 @@ function procesarTokenAcceso(token) {
                 iniciarReloj();
                 iniciarSoporteTeclado();
             } else {
-                alert("❌ El código ingresado no existe.");
+                alert(`❌ El código "${cleanToken}" no está registrado.`);
+                location.reload();
             }
         })
         .catch(err => {
-            alert("⚠️ Error al conectar con Firebase.");
+            alert(`⚠️ Error al conectar con Firebase.`);
+            location.reload();
         });
 }
 
@@ -83,7 +110,7 @@ function iniciarReloj() {
     }, 1000);
 }
 
-// === LÓGICA DE PIN SIN DUPLICACIONES ===
+// === LÓGICA DE PIN ===
 function pressPin(n) {
     if (inputPin.length < 4) {
         inputPin += n;
@@ -96,7 +123,6 @@ function actualizarPinDisplay() {
     pinDisplay.value = "•".repeat(inputPin.length);
 }
 
-// Solo borra números. NO saca a la pantalla de inicio por teclado.
 function borrarPin() {
     if (inputPin.length > 0) {
         inputPin = inputPin.slice(0, -1);
@@ -104,12 +130,11 @@ function borrarPin() {
     }
 }
 
-// Acción del botón X en la pantalla: borra dígitos o sale si ya está vacío
 function actionExitOrClear() {
     if (inputPin.length > 0) {
         borrarPin();
     } else {
-        location.reload(); // Solo regresa al inicio si le das clic a la 'X' estando el PIN en blanco
+        location.reload();
     }
 }
 
@@ -129,7 +154,6 @@ function submitPin() {
 }
 
 function iniciarSoporteTeclado() {
-    // Evitamos que el input atrape el foco para que no duplique teclas
     const pinDisplay = document.getElementById('pin-display');
     pinDisplay.setAttribute('readonly', 'true');
 
@@ -139,7 +163,7 @@ function iniciarSoporteTeclado() {
         if (e.key >= '0' && e.key <= '9') {
             pressPin(e.key);
         } else if (e.key === 'Backspace') {
-            borrarPin(); // Borra limpiamente sin regresar al inicio
+            borrarPin();
         } else if (e.key === 'Enter') {
             submitPin();
         }
