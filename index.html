@@ -1,172 +1,92 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Food OS - Sistema de Punto de Venta</title>
-
-  <!-- FAVICON TRANSPARENTE -->
-  <link rel="icon" type="image/png" href="https://i.imgur.com/eZ3pxwv.png">
-
-  <!-- ESTILOS PRINCIPALES -->
-  <link rel="stylesheet" href="styles.css">
-
-  <!-- LIBRERÍA DE CÓDIGO QR -->
-  <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Food OS</title>
+    <link rel="icon" type="image/png" href="https://i.imgur.com/eZ3pxwv.png">
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
 </head>
 <body>
 
-  <!-- ========================================== -->
-  <!-- 1. PANTALLA DE LOGIN / REGISTRO / ASISTENCIA -->
-  <!-- ========================================== -->
-  <div id="login-screen" class="screen active">
-    <div class="login-card glass-card">
-      <img src="https://i.imgur.com/U0xdLiV.png" alt="Food OS Logo" class="app-logo">
-      <h2>Food OS</h2>
-      <p class="login-subtitle">Ingresa tu PIN de Acceso</p>
-      
-      <!-- TECLADO NUMÉRICO Y PIN -->
-      <div class="pin-display" id="pin-display">****</div>
-      <div class="numpad-grid">
-        <button onclick="appendPin(1)">1</button>
-        <button onclick="appendPin(2)">2</button>
-        <button onclick="appendPin(3)">3</button>
-        <button onclick="appendPin(4)">4</button>
-        <button onclick="appendPin(5)">5</button>
-        <button onclick="appendPin(6)">6</button>
-        <button onclick="appendPin(7)">7</button>
-        <button onclick="appendPin(8)">8</button>
-        <button onclick="appendPin(9)">9</button>
-        <button onclick="clearPin()">C</button>
-        <button onclick="appendPin(0)">0</button>
-        <button onclick="submitPin()">OK</button>
-      </div>
-
-      <button class="qr-login-btn" onclick="abrirEscanerQR()">📷 Escanear QR Encargado</button>
+    <!-- PANTALLA 1: BIENVENIDA -->
+    <div id="welcome-screen" class="screen active">
+        <div class="logo-container">
+            <img src="https://i.imgur.com/U0xdLiV.png" alt="Food OS Logo" class="food-os-logo">
+        </div>
+        <button id="btn-iniciar" onclick="abrirEscaner()">Iniciar</button>
     </div>
-  </div>
 
+    <!-- PANTALLA 2: LECTOR QR / ENTRADA CÓDIGO -->
+    <div id="scanner-screen" class="screen hidden">
+        <div class="glass-card scanner-card">
+            <div class="qr-icon-header">
+                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#ff6b00" stroke-width="2">
+                    <rect x="3" y="3" width="7" height="7" rx="2"></rect>
+                    <rect x="14" y="3" width="7" height="7" rx="2"></rect>
+                    <rect x="14" y="14" width="7" height="7" rx="2"></rect>
+                    <rect x="3" y="14" width="7" height="7" rx="2"></rect>
+                </svg>
+            </div>
+            <h2>Escanear Código QR</h2>
+            <p class="subtitle">Coloque el QR del local frente a la cámara</p>
+            
+            <div class="qr-viewport-wrapper">
+                <div id="reader"></div>
+            </div>
 
-  <!-- ========================================== -->
-  <!-- 2. PANTALLA PRINCIPAL: POS / CAJAS         -->
-  <!-- ========================================== -->
-  <div id="pos-screen" class="screen hidden">
-    
-    <!-- BARRA SUPERIOR / HEADER -->
-    <header class="top-bar">
-      <div class="user-info">
-        <span class="avatar">👤</span>
-        <div>
-          <h3 id="current-user-name">Cajera: Wendy</h3>
-          <small id="current-role-badge" class="badge">Caja</small>
+            <div class="divider"><span>o ingresa tu clave</span></div>
+
+            <div class="manual-input">
+                <input type="text" id="manual-token" placeholder="Ingresa tu código de acceso" autocomplete="off">
+                <button onclick="validarTokenManual()">Acceder</button>
+            </div>
         </div>
-      </div>
-
-      <!-- FILTROS DE TIPO DE PEDIDO -->
-      <div class="order-type-selector">
-        <button class="type-btn active" onclick="setOrderType('comedor')">🍔 Comedor</button>
-        <button class="type-btn" onclick="setOrderType('llevar')">📦 Para Llevar</button>
-        <button class="type-btn" onclick="setOrderType('domicilio')">🛵 Domicilio</button>
-      </div>
-
-      <!-- ACCIONES DE CABECERA (LÁPIZ EXCLUSIVO DE GERENTE) -->
-      <div class="header-actions">
-        <button id="admin-edit-btn" class="icon-btn admin-only hidden" onclick="toggleEditMode()" title="Modo Edición (iPhone)">✏️</button>
-        <button class="icon-btn" onclick="toggleDarkMode()">🌓</button>
-        <button class="icon-btn exit-btn" onclick="logout()">❌</button>
-      </div>
-    </header>
-
-    <!-- CONTENIDO PRINCIPAL (LAYOUT 2 COLUMNAS) -->
-    <main class="pos-container">
-      
-      <!-- COLUMNA IZQUIERDA: CARRITO / COMANDA -->
-      <section class="cart-panel">
-        <div class="cart-header">
-          <h2>Info Orden</h2>
-          <span id="order-number-tag">#001</span>
-        </div>
-
-        <!-- LISTA DINÁMICA DE PLATILLOS AGREGADOS -->
-        <div id="cart-items" class="cart-items-list">
-          <p class="empty-cart-msg">Selecciona un producto del menú...</p>
-        </div>
-
-        <!-- TOTALES Y MÉTODOS -->
-        <div class="cart-summary">
-          <div class="total-row">
-            <span>Total:</span>
-            <strong id="total-price">$0.00 MXN</strong>
-          </div>
-          <div class="sub-total-row">
-            <small>Dólares:</small>
-            <small id="total-usd">$0.00 USD</small>
-          </div>
-
-          <!-- BOTONES DE ACCIÓN DE COMANDA -->
-          <div class="cart-actions-grid">
-            <button class="action-btn send-btn" onclick="sendToKitchen()">🚀 Enviar</button>
-            <button class="action-btn pay-btn" onclick="openPaymentModal()">💳 Pago</button>
-            <button class="action-btn plus-btn" onclick="togglePlusMenu()">➕</button>
-          </div>
-          
-          <!-- BOTÓN OPCIONAL CANCELAR DOMICILIOS (REQUIERE QR GERENTE) -->
-          <button id="cancel-order-btn" class="cancel-btn hidden" onclick="cancelOrderWithQR()">🚫 Cancelar Orden (Pide QR)</button>
-        </div>
-      </section>
-
-      <!-- COLUMNA DERECHA: CATEGORÍAS Y PRODUCTOS -->
-      <section class="menu-panel">
-        
-        <!-- BARRA DE CATEGORÍAS DINÁMICAS (CON IMÁGENES/ICONOS) -->
-        <div id="categories-bar" class="categories-bar">
-          <button class="cat-card active" onclick="filterCategory('all')">
-            <span>✨</span> Todos
-          </button>
-        </div>
-
-        <!-- GRID DE PRODUCTOS DINÁMICOS -->
-        <div id="products-grid" class="products-grid">
-          <!-- Se renderizan los platillos desde Firebase -->
-        </div>
-      </section>
-
-    </main>
-  </div>
-
-
-  <!-- ========================================== -->
-  <!-- 3. MODAL MENÚ DESPLEGABLE DEL BOTÓN '+'     -->
-  <!-- ========================================== -->
-  <div id="plus-menu-modal" class="modal hidden">
-    <div class="modal-content glass-card">
-      <h3>Opciones Rápidas</h3>
-      <div class="menu-options-list">
-        <button onclick="scanRepaQR()">🛵 Cobrar a Repartidor (Leer QR)</button>
-        <button onclick="addOrderNote()">📝 Agregar Nota a la Mesa</button>
-        
-        <!-- OPCIONES EXCLUSIVAS DEL ENCARGADO / GERENTE -->
-        <button class="admin-only hidden" onclick="openCreateProductModal()">➕ Agregar / Modificar Producto</button>
-        <button class="admin-only hidden" onclick="openEmployeesModal()">👥 Gestionar Personal (Altas/Bajas)</button>
-        <button class="admin-only hidden" onclick="performDailyCut()">📈 Hacer Corte de Caja del Día</button>
-      </div>
-      <button class="close-modal-btn" onclick="closePlusMenu()">Cerrar</button>
     </div>
-  </div>
 
+    <!-- PANTALLA 3: LOCKSCREEN -->
+    <div id="lockscreen" class="screen hidden">
+        <button class="theme-picker" onclick="cambiarFondoLockscreen()">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <path d="M12 2a7 7 0 1 0 10 10"></path>
+            </svg>
+        </button>
 
-  <!-- ========================================== -->
-  <!-- 4. MODAL LECTOR QR CÁMARA                  -->
-  <!-- ========================================== -->
-  <div id="qr-modal" class="modal hidden">
-    <div class="modal-content glass-card">
-      <h3>Escanear Código QR</h3>
-      <div id="reader"></div>
-      <button class="close-modal-btn" onclick="cerrarEscanerQR()">Cancelar</button>
+        <div class="lockscreen-content">
+            <div class="clock-section">
+                <div class="clock" id="clock-display">00:00</div>
+                <p id="business-title">Cargando datos...</p>
+            </div>
+
+            <div class="pin-card glass-card">
+                <p class="pin-instruction">Ingresar PIN</p>
+                
+                <input type="password" id="pin-display" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off">
+                
+                <div class="keypad">
+                    <button onclick="pressPin('1')">1</button>
+                    <button onclick="pressPin('2')">2</button>
+                    <button onclick="pressPin('3')">3</button>
+                    <button onclick="pressPin('4')">4</button>
+                    <button onclick="pressPin('5')">5</button>
+                    <button onclick="pressPin('6')">6</button>
+                    <button onclick="pressPin('7')">7</button>
+                    <button onclick="pressPin('8')">8</button>
+                    <button onclick="pressPin('9')">9</button>
+                    <button onclick="actionExitOrClear()" class="btn-action">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                    </button>
+                    <button onclick="pressPin('0')">0</button>
+                    <button onclick="submitPin()" class="btn-action btn-ok">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                    </button>
+                </div>
+            </div>
+        </div>
     </div>
-  </div>
 
-  <!-- LÓGICA PRINCIPAL JS -->
-  <script src="script.js"></script>
+    <script src="app.js"></script>
 </body>
 </html>
