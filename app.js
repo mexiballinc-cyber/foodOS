@@ -83,7 +83,7 @@ function iniciarReloj() {
     }, 1000);
 }
 
-// === LÓGICA DE TECLADO UNIFICADA Y RÁPIDA ===
+// === CONTROL ULTRA RÁPIDO DE PIN ===
 function pressPin(n) {
     if (inputPin.length < 4) {
         inputPin += n;
@@ -92,7 +92,8 @@ function pressPin(n) {
 }
 
 function actualizarPinDisplay() {
-    document.getElementById('pin-display').value = "•".repeat(inputPin.length);
+    const pinDisplay = document.getElementById('pin-display');
+    pinDisplay.value = "•".repeat(inputPin.length);
 }
 
 function actionExitOrClear() {
@@ -122,14 +123,10 @@ function submitPin() {
 function iniciarSoporteTeclado() {
     const pinInputEl = document.getElementById('pin-display');
     
-    // Sincronización directa con el input del celular / PC
-    pinInputEl.addEventListener('input', (e) => {
-        const val = e.target.value.replace(/[^0-9]/g, '');
-        inputPin = val.slice(0, 4);
-        actualizarPinDisplay();
-    });
+    // Enfocar automáticamente el input para recibir el teclado inmediato
+    pinInputEl.focus();
 
-    // Teclas rápidas en PC (Numbers, Backspace, Enter)
+    // Captura limpia del teclado sin bucles
     window.addEventListener('keydown', (e) => {
         if (document.getElementById('lockscreen').classList.contains('hidden')) return;
 
