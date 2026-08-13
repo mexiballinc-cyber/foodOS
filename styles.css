@@ -8,8 +8,9 @@
 body {
     background-color: #090a0f;
     color: white;
-    overflow: hidden;
-    height: 100vh;
+    overflow-x: hidden;
+    min-height: 100vh;
+    min-height: 100dvh;
     width: 100vw;
 }
 
@@ -18,23 +19,24 @@ body {
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    height: 100vh;
+    min-height: 100vh;
+    min-height: 100dvh;
     width: 100vw;
     position: absolute;
     top: 0;
     left: 0;
     transition: all 0.4s ease;
     padding: 20px;
+    overflow-y: auto;
 }
 
 .hidden { display: none !important; }
 
 /* ==========================================
-   PANTALLA DE INICIO (OVERLAY OSCURO)
+   FONDO DE GORRITOS CON OVERLAY EN INICIO Y SCANNER
    ========================================== */
-#welcome-screen {
-    /* Fondo con capa oscura al 75% para resaltar el logo */
-    background-image: linear-gradient(rgba(0, 0, 0, 0.75), rgba(0, 0, 0, 0.75)), url('https://i.imgur.com/irMrq2G.png');
+#welcome-screen, #scanner-screen {
+    background-image: linear-gradient(rgba(0, 0, 0, 0.78), rgba(0, 0, 0, 0.78)), url('https://i.imgur.com/irMrq2G.png');
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
@@ -48,28 +50,19 @@ body {
     width: 100%;
 }
 
-/* LOGO OFICIAL CON ANIMACIÓN FLOTANTE DINÁMICA */
 .food-os-logo {
     width: 85%;
     max-width: 380px;
     height: auto;
     filter: drop-shadow(0px 12px 30px rgba(0, 0, 0, 0.7));
     object-fit: contain;
-    /* EFECTO DE MOVIMIENTO SUAVE */
     animation: flotarLogo 4s ease-in-out infinite;
 }
 
-/* ANIMACIÓN KEYFRAMES */
 @keyframes flotarLogo {
-    0% {
-        transform: translateY(0px);
-    }
-    50% {
-        transform: translateY(-12px); /* Eleva el logo sutilmente */
-    }
-    100% {
-        transform: translateY(0px);
-    }
+    0% { transform: translateY(0px); }
+    50% { transform: translateY(-12px); }
+    100% { transform: translateY(0px); }
 }
 
 #btn-iniciar {
@@ -89,16 +82,16 @@ body {
 #btn-iniciar:active { transform: scale(0.95); }
 
 /* ==========================================
-   TARJETAS GLASSMORPHISM Y ESCÁNER QR
+   TARJETAS GLASSMORPHISM Y CORRECCIÓN DE ESTILOS QR
    ========================================== */
 .glass-card {
-    background: rgba(255, 255, 255, 0.08);
+    background: rgba(18, 18, 24, 0.75);
     backdrop-filter: blur(25px);
     -webkit-backdrop-filter: blur(25px);
-    border: 1px solid rgba(255, 255, 255, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.12);
     border-radius: 28px;
     padding: 25px;
-    box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+    box-shadow: 0 20px 50px rgba(0,0,0,0.6);
     text-align: center;
 }
 
@@ -110,29 +103,47 @@ body {
 .subtitle { font-size: 0.85rem; color: #aaa; margin-bottom: 15px; }
 
 .qr-viewport-wrapper {
-    width: 220px;
-    height: 220px;
+    width: 230px;
+    min-height: 180px;
     margin: 0 auto;
     border-radius: 20px;
     overflow: hidden;
-    border: 2px solid rgba(255, 107, 0, 0.5);
-    box-shadow: 0 0 20px rgba(255, 107, 0, 0.2);
+    border: 2px solid rgba(255, 107, 0, 0.6);
+    box-shadow: 0 0 20px rgba(255, 107, 0, 0.25);
+    background: rgba(0,0,0,0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
-#reader { border: none !important; }
+/* OCULTAR LETRAS Y BOTONES FEOS POR DEFECTO DE LA LIBRERÍA QR */
+#reader { border: none !important; width: 100%; }
 #reader video { object-fit: cover !important; border-radius: 20px; }
+#reader img { display: none !important; }
+#reader a { color: #ff8800 !important; font-size: 0.85rem; text-decoration: none; font-weight: 600; }
+#reader__dashboard_section_csr button {
+    background: #ff6b00 !important;
+    color: white !important;
+    border: none !important;
+    padding: 8px 16px !important;
+    border-radius: 10px !important;
+    font-size: 0.85rem !important;
+    cursor: pointer !important;
+    margin-top: 10px !important;
+}
 
 .divider { margin: 15px 0; font-size: 0.8rem; color: #777; }
 .manual-input { display: flex; gap: 8px; }
 .manual-input input {
     flex: 1;
-    background: rgba(0,0,0,0.4);
+    background: rgba(0,0,0,0.5);
     border: 1px solid rgba(255,255,255,0.2);
     border-radius: 12px;
     padding: 12px;
     color: white;
     text-align: center;
     font-size: 0.9rem;
+    outline: none;
 }
 .manual-input button {
     background: #ff6b00;
@@ -169,10 +180,10 @@ body {
 #business-title { font-size: 1.2rem; font-weight: 600; color: rgba(255, 255, 255, 0.9); margin-top: 10px; }
 
 #pin-display {
-    background: rgba(0, 0, 0, 0.4);
+    background: rgba(0, 0, 0, 0.5);
     border: 1px solid rgba(255, 255, 255, 0.2);
-    height: 45px;
-    width: 160px;
+    height: 48px;
+    width: 170px;
     border-radius: 12px;
     margin: 15px auto;
     text-align: center;
@@ -214,29 +225,33 @@ body {
     cursor: pointer;
 }
 
-/* ==========================================
-   PANTALLAS VERTICALES / MÓVILES
-   ========================================== */
+/* FIX PARA MÓVILES / PANTALLAS PEQUEÑAS */
 @media (max-width: 768px) {
-    .lockscreen-content {
-        flex-direction: column;
-        gap: 25px;
+    .screen {
+        padding: 15px 10px;
+        justify-content: flex-start;
+        padding-top: 40px;
     }
 
-    .clock { font-size: 3.5rem; }
-    #business-title { font-size: 1.1rem; }
+    .lockscreen-content {
+        flex-direction: column;
+        gap: 20px;
+    }
+
+    .clock { font-size: 3.2rem; }
+    #business-title { font-size: 1rem; }
 
     .glass-card {
-        padding: 20px;
+        padding: 18px;
         border-radius: 20px;
     }
 
     .food-os-logo {
-        max-width: 290px;
+        max-width: 270px;
     }
 
     #btn-iniciar {
-        padding: 14px 40px;
-        font-size: 1.2rem;
+        padding: 12px 35px;
+        font-size: 1.1rem;
     }
 }
