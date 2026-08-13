@@ -83,7 +83,7 @@ function iniciarReloj() {
     }, 1000);
 }
 
-// === CONTROL ULTRA RÁPIDO DE PIN ===
+// === LÓGICA DE PIN SIN DUPLICACIONES ===
 function pressPin(n) {
     if (inputPin.length < 4) {
         inputPin += n;
@@ -96,12 +96,20 @@ function actualizarPinDisplay() {
     pinDisplay.value = "•".repeat(inputPin.length);
 }
 
-function actionExitOrClear() {
+// Solo borra números. NO saca a la pantalla de inicio por teclado.
+function borrarPin() {
     if (inputPin.length > 0) {
         inputPin = inputPin.slice(0, -1);
         actualizarPinDisplay();
+    }
+}
+
+// Acción del botón X en la pantalla: borra dígitos o sale si ya está vacío
+function actionExitOrClear() {
+    if (inputPin.length > 0) {
+        borrarPin();
     } else {
-        location.reload();
+        location.reload(); // Solo regresa al inicio si le das clic a la 'X' estando el PIN en blanco
     }
 }
 
@@ -121,19 +129,17 @@ function submitPin() {
 }
 
 function iniciarSoporteTeclado() {
-    const pinInputEl = document.getElementById('pin-display');
-    
-    // Enfocar automáticamente el input para recibir el teclado inmediato
-    pinInputEl.focus();
+    // Evitamos que el input atrape el foco para que no duplique teclas
+    const pinDisplay = document.getElementById('pin-display');
+    pinDisplay.setAttribute('readonly', 'true');
 
-    // Captura limpia del teclado sin bucles
     window.addEventListener('keydown', (e) => {
         if (document.getElementById('lockscreen').classList.contains('hidden')) return;
 
         if (e.key >= '0' && e.key <= '9') {
             pressPin(e.key);
         } else if (e.key === 'Backspace') {
-            actionExitOrClear();
+            borrarPin(); // Borra limpiamente sin regresar al inicio
         } else if (e.key === 'Enter') {
             submitPin();
         }
