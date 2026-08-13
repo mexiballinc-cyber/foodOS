@@ -83,7 +83,7 @@ function iniciarReloj() {
     }, 1000);
 }
 
-// === TECLADO DUAL (PANTALLA Y FÍSICO/MÓVIL) ===
+// === LÓGICA DE TECLADO UNIFICADA Y RÁPIDA ===
 function pressPin(n) {
     if (inputPin.length < 4) {
         inputPin += n;
@@ -122,12 +122,14 @@ function submitPin() {
 function iniciarSoporteTeclado() {
     const pinInputEl = document.getElementById('pin-display');
     
+    // Sincronización directa con el input del celular / PC
     pinInputEl.addEventListener('input', (e) => {
         const val = e.target.value.replace(/[^0-9]/g, '');
         inputPin = val.slice(0, 4);
         actualizarPinDisplay();
     });
 
+    // Teclas rápidas en PC (Numbers, Backspace, Enter)
     window.addEventListener('keydown', (e) => {
         if (document.getElementById('lockscreen').classList.contains('hidden')) return;
 
