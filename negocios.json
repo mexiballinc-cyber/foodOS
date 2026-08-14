@@ -4,42 +4,63 @@
       "business_id": "cubito_sushi_01",
       "business_name": "Cubito Sushi 🍣",
       "status": "active",
+      "active_session_token": null,
+      "gerente": {
+        "nombre": "Jesús",
+        "pin": "1525",
+        "qr_code": "QR_GERENTE_CUBITO_1525"
+      },
       "pins": {
         "1234": "caja",
         "5555": "cocina",
         "7777": "repartidor",
+        "1525": "admin",
         "9999": "admin"
       },
       "menu": [
-        { "id": 101, "name": "Roll Minecraftia", "price": 130 },
-        { "id": 102, "name": "Kushiage Bloque de Queso", "price": 75 }
+        { "id": 101, "name": "Roll Minecraftia", "price": 130, "category": "Sushi" },
+        { "id": 102, "name": "Kushiage Bloque de Queso", "price": 75, "category": "Entradas" }
       ]
     },
     "TOKEN_NAVEGANTE_02": {
       "business_id": "el_navegante_01",
       "business_name": "El Navegante ⛵",
-      "status": "suspended",
+      "status": "active",
+      "active_session_token": null,
+      "gerente": {
+        "nombre": "Capitán",
+        "pin": "2507",
+        "qr_code": "QR_GERENTE_NAVEGANTE_2507"
+      },
       "pins": {
         "1111": "caja",
         "2222": "cocina",
-        "3333": "repartidor"
+        "3333": "repartidor",
+        "2507": "admin"
       },
       "menu": [
-        { "id": 201, "name": "Tostada Capitán", "price": 95 },
-        { "id": 202, "name": "Caldazo de Camisón", "price": 160 }
+        { "id": 201, "name": "Tostada Capitán", "price": 95, "category": "Mariscos" },
+        { "id": 202, "name": "Caldazo de Camisón", "price": 160, "category": "Sopas" }
       ]
     },
     "TOKEN_ENEMIGOS_03": {
       "business_id": "tacos_enemigos_01",
       "business_name": "Tacos Enemigos 🌮",
       "status": "active",
+      "active_session_token": null,
+      "gerente": {
+        "nombre": "Los Amigos",
+        "pin": "3107",
+        "qr_code": "QR_GERENTE_ENEMIGOS_3107"
+      },
       "pins": {
         "4444": "caja",
-        "8888": "cocina"
+        "8888": "cocina",
+        "3107": "admin"
       },
       "menu": [
-        { "id": 301, "name": "Taco de Asada Mortal", "price": 35 },
-        { "id": 302, "name": "Vampiro con Fuego", "price": 50 }
+        { "id": 301, "name": "Taco de Asada Mortal", "price": 35, "category": "Tacos" },
+        { "id": 302, "name": "Vampiro con Fuego", "price": 50, "category": "Especiales" }
       ]
     }
   }
