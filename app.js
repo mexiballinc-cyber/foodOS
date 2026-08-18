@@ -67,14 +67,9 @@ function validarTokenManual() {
 
 function procesarTokenAcceso(rawToken) {
     let cleanToken = rawToken.trim();
-
-    // Limpiar si viene como URL o con barras
     if (cleanToken.includes('/')) {
-        const parts = cleanToken.split('/').filter(p => p.length > 0);
-        cleanToken = parts[parts.length - 1];
-    }
-    if (cleanToken.includes('?')) {
-        cleanToken = cleanToken.split('?')[0];
+        const parts = cleanToken.split('/');
+        cleanToken = parts[parts.length - 1] || parts[parts.length - 2];
     }
 
     // SI ES UN QR DIRECTO DE GERENTE
@@ -185,6 +180,7 @@ function actionExitOrClear() {
     }
 }
 
+// ÚNICO CAMBIO: LEER EL ROL, NOMBRE Y ÁREA DEL EMPLEADO DESDE EL JSON DINÁMICO
 function submitPin() {
     if (currentBusinessData.pins && currentBusinessData.pins[inputPin]) {
         const rol = currentBusinessData.pins[inputPin];
@@ -192,9 +188,15 @@ function submitPin() {
 
         if (currentBusinessData.gerente && currentBusinessData.gerente.pin === inputPin) {
             userName = currentBusinessData.gerente.nombre;
+        } else if (currentBusinessData.empleados && currentBusinessData.empleados[inputPin]) {
+            userName = currentBusinessData.empleados[inputPin].nombre || userName;
         }
 
-        iniciarSesionUnica(currentBusinessToken, rol, userName);
+        const areaTrabajo = (currentBusinessData.pins_area && currentBusinessData.pins_area[inputPin])
+            ? currentBusinessData.pins_area[inputPin]
+            : "general";
+
+        iniciarSesionUnica(currentBusinessToken, rol, userName, areaTrabajo);
     } else {
         alert("❌ PIN Incorrecto.");
         inputPin = "";
@@ -227,7 +229,7 @@ function cambiarFondoLockscreen() {
 // ==========================================
 // 4. SEGURIDAD: CONTROL DE SESIÓN ÚNICA Y PUENTE
 // ==========================================
-function iniciarSesionUnica(businessToken, userRole, userName) {
+function iniciarSesionUnica(businessToken, userRole, userName, areaTrabajo = "general") {
     const newSessionId = "SESS_" + Date.now() + "_" + Math.random().toString(36).substr(2, 5);
 
     fetch(`${FIREBASE_URL}/businesses/${businessToken}/active_session_token.json`, {
@@ -241,17 +243,20 @@ function iniciarSesionUnica(businessToken, userRole, userName) {
         localStorage.setItem('foodos_business_data', JSON.stringify(currentBusinessData));
         localStorage.setItem('foodos_role', userRole);
         localStorage.setItem('foodos_user_name', userName);
+        localStorage.setItem('foodos_area', areaTrabajo);
 
         // Iniciar vigilancia remota
         escucharCierreDeSesionRemoto(businessToken, newSessionId);
 
-        // Redirección segura según el rol
-        if (userRole === 'caja' || userRole === 'admin') {
+        // Redirección según el rol
+        if (userRole === 'caja' || userRole === 'admin' || userRole === 'gerente') {
             window.location.href = 'caja.html';
-        } else if (userRole === 'cocina') {
-            window.location.href = 'cocina.html';
-        } else if (userRole === 'repartidor') {
+        } else if (userRole === 'cocina' || userRole === 'cocinero' || userRole === 'pizzero') {
+            window.location.href = `cocina.html?area=${areaTrabajo}`;
+        } else if (userRole === 'repartidor' || userRole === 'repa') {
             window.location.href = 'repa.html';
+        } else {
+            window.location.href = 'caja.html';
         }
     })
     .catch(err => {
@@ -270,5 +275,5 @@ function escucharCierreDeSesionRemoto(businessToken, mySessionId) {
                     window.location.href = 'index.html';
                 }
             });
-    }, 5000);
+    }, 5000); // Revisa la validez cada 5 segundos
 }
