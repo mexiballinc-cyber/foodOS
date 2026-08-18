@@ -2,306 +2,330 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Food OS - Cajas</title>
-    <!-- Tailwind CSS -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Food OS - POS Cajas</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- CONEXIÓN A FIREBASE -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getDatabase, ref, push, onValue } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyDD5YehD45blgPdbDCUEcwSnqBjdA_eZlE",
+            authDomain: "food-os-system.firebaseapp.com",
+            databaseURL: "https://food-os-system-default-rtdb.firebaseio.com",
+            projectId: "food-os-system",
+            storageBucket: "food-os-system.firebasestorage.app",
+            messagingSenderId: "82413830766",
+            appId: "1:82413830766:web:23da82e27ead8b8f2d1c7f"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+
+        // 🛡️ Datos Dinámicos de Sesión desde LocalStorage
+        const currentSucursal = localStorage.getItem("foodos_sucursal") || "cubito_sushi";
+        const usuarioActivo = localStorage.getItem("foodos_usuario") || "Empleado General"; 
+        const sucursalRef = `sucursales/${currentSucursal}`;
+
+        // Inyectar nombres dinámicos en la UI (Elimina "Wendy")
+        document.getElementById("nombre-cajero").innerText = usuarioActivo;
+        document.getElementById("nombre-sucursal").innerText = currentSucursal.replace("_", " ").toUpperCase();
+
+        // 📂 1. Carga Dinámica de Categorías desde Firebase
+        let menuCompleto = {};
+        onValue(ref(db, `${sucursalRef}/categorias`), (snapshot) => {
+            const data = snapshot.val();
+            const container = document.getElementById("categories-bar");
+            const selectModal = document.getElementById("prod-categoria");
+            
+            const addBtn = document.getElementById("btn-add-category");
+            container.innerHTML = `<button onclick="filtrarCategoria('Todos')" class="btn-raised px-4 py-2 text-xs md:text-sm font-bold whitespace-nowrap">Todos</button>`;
+            selectModal.innerHTML = "";
+
+            if (data) {
+                Object.keys(data).forEach(key => {
+                    const cat = data[key];
+                    container.innerHTML += `<button onclick="filtrarCategoria('${cat.nombre}')" class="btn-raised px-4 py-2 text-xs md:text-sm font-bold whitespace-nowrap">${cat.nombre}</button>`;
+                    selectModal.innerHTML += `<option value="${cat.nombre}">${cat.nombre}</option>`;
+                });
+            }
+            container.appendChild(addBtn);
+        });
+
+        // 📥 2. Carga Dinámica del Menú desde Firebase
+        onValue(ref(db, `${sucursalRef}/menu`), (snapshot) => {
+            menuCompleto = snapshot.val() || {};
+            renderizarProductos(menuCompleto);
+        });
+
+        window.renderizarProductos = function(productos) {
+            const grid = document.getElementById("products-grid");
+            grid.innerHTML = "";
+
+            if (Object.keys(productos).length === 0) {
+                grid.innerHTML = `<div class="col-span-full text-center py-12 text-slate-400 font-medium text-sm">El menú está vacío.<br>Usa el lápiz para agregar platillos.</div>`;
+                return;
+            }
+
+            Object.keys(productos).forEach(id => {
+                const item = productos[id];
+                grid.innerHTML += `
+                    <div onclick="agregarAlTicket('${item.nombre}', ${item.precio})" class="btn-raised p-3 flex flex-col justify-between h-32 md:h-40 cursor-pointer relative overflow-hidden group">
+                        <img src="${item.foto}" class="absolute inset-0 w-full h-full object-cover opacity-20 group-hover:opacity-40 transition-opacity" />
+                        <span class="text-[10px] md:text-xs font-bold uppercase tracking-wider text-amber-400 z-10">${item.categoria}</span>
+                        <div class="z-10">
+                            <p class="font-bold text-sm md:text-base leading-tight">${item.nombre}</p>
+                            <p class="text-base md:text-lg font-black text-emerald-400 mt-1">$${item.precio} MXN</p>
+                        </div>
+                    </div>
+                `;
+            });
+        };
+
+        // 🔍 Filtrar por Categoría (Botones de arriba)
+        window.filtrarCategoria = function(nombreCat) {
+            if (nombreCat === 'Todos') {
+                renderizarProductos(menuCompleto);
+            } else {
+                const filtrados = {};
+                Object.keys(menuCompleto).forEach(key => {
+                    if (menuCompleto[key].categoria === nombreCat) {
+                        filtrados[key] = menuCompleto[key];
+                    }
+                });
+                renderizarProductos(filtrados);
+            }
+        };
+
+        // ✏️ AÑADIR PLATILLO (Gerente)
+        document.getElementById("form-nuevo-producto").addEventListener("submit", (e) => {
+            e.preventDefault();
+            const nuevoPlatillo = {
+                nombre: document.getElementById("prod-nombre").value,
+                precio: parseFloat(document.getElementById("prod-precio").value),
+                categoria: document.getElementById("prod-categoria").value,
+                foto: document.getElementById("prod-foto").value,
+                ingredientes: document.getElementById("prod-ingredientes").value
+            };
+
+            push(ref(db, `${sucursalRef}/menu`), nuevoPlatillo).then(() => {
+                alert("✅ Platillo agregado a Firebase.");
+                document.getElementById("form-nuevo-producto").reset();
+                cerrarModalProducto();
+            });
+        });
+
+        // 📂 AÑADIR CATEGORÍA (Gerente)
+        window.guardarCategoriaServer = function() {
+            const nombre = prompt("Nombre de la nueva categoría:");
+            if (nombre) {
+                push(ref(db, `${sucursalRef}/categorias`), { nombre });
+            }
+        };
+
+        window.cerrarSesion = function() {
+            localStorage.clear();
+            window.location.href = "index.html";
+        };
+    </script>
+
     <style>
         :root {
-            --bg-base: #0f172a;
+            --bg-gradient: linear-gradient(135deg, #0f172a 0%, #1e2640 100%);
+            --text-color: #f8fafc;
             --glass-bg: rgba(255, 255, 255, 0.05);
             --glass-border: rgba(255, 255, 255, 0.12);
-            --shadow-raised: 8px 8px 16px rgba(0, 0, 0, 0.4), -4px -4px 12px rgba(255, 255, 255, 0.05);
-            --shadow-sunken: inset 4px 4px 8px rgba(0, 0, 0, 0.5), inset -3px -3px 6px rgba(255, 255, 255, 0.05);
+            --shadow-raised: 6px 6px 12px rgba(0, 0, 0, 0.4), -3px -3px 8px rgba(255, 255, 255, 0.05);
+            --shadow-sunken: inset 3px 3px 6px rgba(0, 0, 0, 0.5), inset -2px -2px 4px rgba(255, 255, 255, 0.05);
+        }
+
+        .light-mode {
+            --bg-gradient: linear-gradient(135deg, #e2e8f0 0%, #cbd5e1 100%);
+            --text-color: #0f172a;
+            --glass-bg: rgba(255, 255, 255, 0.6);
+            --glass-border: rgba(255, 255, 255, 0.8);
+            --shadow-raised: 5px 5px 10px rgba(0, 0, 0, 0.15), -3px -3px 8px rgba(255, 255, 255, 0.9);
+            --shadow-sunken: inset 3px 3px 5px rgba(0, 0, 0, 0.15), inset -2px -2px 4px rgba(255, 255, 255, 0.8);
         }
 
         body {
-            background: linear-gradient(135deg, #0b0f19 0%, #1e2640 100%);
-            color: #f8fafc;
+            background: var(--bg-gradient);
+            color: var(--text-color);
             font-family: system-ui, -apple-system, sans-serif;
-            height: 100vh;
-            overflow: hidden;
-            user-select: none;
+            min-height: 100vh;
+            transition: background 0.3s ease;
         }
 
-        /* Paneles Principales Glass */
         .glass-panel {
             background: var(--glass-bg);
             backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
             border: 1px solid var(--glass-border);
-            border-radius: 28px;
+            border-radius: 20px;
         }
 
-        /* EFECTO 3D LEVANTADO (Platillos, Botones Principales) */
         .btn-raised {
             background: rgba(255, 255, 255, 0.07);
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            border-radius: 20px;
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
             box-shadow: var(--shadow-raised);
-            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
         }
+        .btn-raised:active { transform: translateY(2px); box-shadow: var(--shadow-sunken); }
 
-        .btn-raised:hover {
-            transform: translateY(-3px);
-            border-color: #38bdf8;
-            box-shadow: 12px 12px 24px rgba(0, 0, 0, 0.5), -4px -4px 14px rgba(56, 189, 248, 0.15);
-        }
-
-        .btn-raised:active {
-            transform: translateY(2px);
-            box-shadow: var(--shadow-sunken);
-        }
-
-        /* EFECTO 3D HUNDIDO (Modo Claro/Oscuro, Lápiz Gerente, Campos) */
         .btn-sunken {
-            background: rgba(0, 0, 0, 0.25);
-            border: 1px solid rgba(255, 255, 255, 0.05);
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid var(--glass-border);
             border-radius: 50px;
             box-shadow: var(--shadow-sunken);
-            transition: all 0.2s ease;
         }
 
-        .btn-sunken:hover {
-            border-color: rgba(255, 255, 255, 0.2);
-            color: #38bdf8;
-        }
-
-        /* Estilo para categoría activa */
-        .category-tab-active {
-            background: #38bdf8 !important;
-            color: #0f172a !important;
-            font-weight: 800;
-            box-shadow: 0 0 15px rgba(56, 189, 248, 0.5);
-        }
-
-        /* Custom Scrollbar */
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.15); border-radius: 10px; }
+        ::-webkit-scrollbar { width: 4px; height: 4px; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 10px; }
     </style>
 </head>
-<body class="p-4 flex flex-col gap-4">
+<body class="p-2 md:p-4 flex flex-col gap-3 h-screen overflow-hidden">
 
-    <!-- HEADER SUPERIOR GLASS -->
-    <header class="glass-panel h-16 px-6 flex justify-between items-center shrink-0">
-        <!-- Usuario / Cajero -->
-        <div class="flex items-center gap-3">
-            <span class="text-2xl">🍣</span>
-            <h1 class="text-xl font-black tracking-wide">cajas: <span class="font-medium text-slate-300" id="nombre-cajero">Cajera Wendy</span></h1>
-            <span id="badge-gerente" class="hidden bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider">Modo Gerente</span>
+    <!-- HEADER RESPONSIVE -->
+    <header class="glass-panel h-14 md:h-16 px-4 md:px-6 flex justify-between items-center shrink-0">
+        <div class="flex items-center gap-2 md:gap-3 overflow-hidden">
+            <span class="text-xl md:text-2xl">🍣</span>
+            <div class="flex flex-col">
+                <h1 class="text-xs md:text-lg font-black leading-tight truncate" id="nombre-sucursal">Cargando...</h1>
+                <span class="text-[10px] md:text-xs text-amber-400 font-bold" id="nombre-cajero">Cajero</span>
+            </div>
         </div>
 
-        <!-- Controles 3D Hundidos (Dark/Light + Lápiz Gerente + Salir) -->
-        <div class="flex items-center gap-3">
-            <!-- Botón Lápiz Gerente (Solo visible para rol Gerente) -->
-            <button id="btn-edit-mode" onclick="toggleModoEdicion()" class="hidden w-12 h-12 btn-sunken flex items-center justify-center text-xl text-amber-400 hover:text-amber-300" title="Modo Edición Gerente">
-                ✏️
-            </button>
-
-            <!-- Switch Dark / Light Mode Hundido -->
-            <button onclick="toggleTema()" class="w-12 h-12 btn-sunken flex items-center justify-center text-xl text-slate-300" title="Cambiar Tema">
-                🌙
-            </button>
-
-            <!-- Botón Salir -->
-            <button onclick="cerrarSesion()" class="w-12 h-12 btn-sunken flex items-center justify-center text-xl text-rose-400 hover:text-rose-300" title="Cerrar Sesión">
-                ✕
-            </button>
+        <div class="flex items-center gap-2">
+            <button id="btn-edit-mode" onclick="toggleModoEdicion()" class="w-9 h-9 md:w-11 md:h-11 btn-sunken flex items-center justify-center text-base md:text-lg text-amber-400">✏️</button>
+            <button onclick="toggleTema()" id="btn-theme" class="w-9 h-9 md:w-11 md:h-11 btn-sunken flex items-center justify-center text-base md:text-lg">🌙</button>
+            <button onclick="cerrarSesion()" class="w-9 h-9 md:w-11 md:h-11 btn-sunken flex items-center justify-center text-base md:text-lg text-rose-400">✕</button>
         </div>
     </header>
 
-    <!-- ÁREA PRINCIPAL -->
-    <main class="flex-1 flex gap-4 overflow-hidden">
+    <!-- PANEL PRINCIPAL (FLEX COL EN MÓVIL VERTICAL / FLEX ROW EN HORIZONTAL & DESKTOP) -->
+    <main class="flex-1 flex flex-col md:flex-row gap-3 overflow-hidden">
         
-        <!-- PANEL IZQUIERDO: TICKET Y COMANDAS -->
-        <section class="glass-panel w-5/12 flex flex-col p-6 gap-4">
-            <!-- Encabezado Ticket -->
-            <div class="flex justify-between items-center border-b border-white/10 pb-3">
-                <h2 class="text-2xl font-black tracking-wider">info orden</h2>
-                <!-- Selector Tipo de Servicio -->
-                <span id="servicio-badge" class="bg-sky-500/20 text-sky-300 border border-sky-500/30 text-xs font-bold px-3 py-1 rounded-full uppercase">Comedor</span>
+        <!-- PANEL TICKET (Arriba en celular vertical / Izquierda en Horizontal y Desktop) -->
+        <section class="glass-panel w-full md:w-5/12 h-1/2 md:h-full flex flex-col p-3 md:p-5 gap-2 md:gap-3 shrink-0">
+            <div class="flex justify-between items-center border-b border-white/10 pb-2">
+                <h2 class="text-base md:text-xl font-black">info orden</h2>
+                <span class="text-xs font-bold text-sky-400" id="total-items">0 items</span>
             </div>
 
-            <!-- Lista Dinámica de Productos Seleccionados -->
-            <div id="ticket-items-container" class="flex-1 overflow-y-auto space-y-3 pr-2">
-                <!-- Se llena dinámicamente con JavaScript desde Firebase -->
-                <div class="text-center text-slate-500 py-12 text-sm font-medium">No hay productos en la orden actual</div>
+            <div id="ticket-items" class="flex-1 overflow-y-auto space-y-2 pr-1">
+                <!-- Se llena al dar clic a platillos -->
             </div>
-
-            <!-- Totales Financieros -->
-            <div class="border-t border-white/10 pt-4 space-y-1">
-                <div class="text-center">
-                    <span class="text-xs text-slate-400 uppercase tracking-widest block">Total MXN</span>
-                    <span class="text-4xl font-black text-white" id="total-mxn">$0.00</span>
-                </div>
-                <div class="text-center text-slate-400 text-xs font-semibold">
-                    Dólares: $<span id="total-usd">0.00</span> USD
-                </div>
-                
-                <div class="h-1 w-full bg-white/10 rounded-full my-2"></div>
-
-                <!-- BOTONES DE ACCIÓN INFERIORES -->
-                <div class="grid grid-cols-3 gap-2 pt-1">
-                    <button onclick="cambiarTipoServicio('domicilio')" class="btn-raised h-12 text-xs font-bold uppercase tracking-wider text-slate-300">Domicilio</button>
-                    <button onclick="cambiarTipoServicio('llevar')" class="btn-raised h-12 text-xs font-bold uppercase tracking-wider text-slate-300">Para Llevar</button>
-                    <button onclick="cambiarTipoServicio('comedor')" class="btn-raised h-12 text-xs font-bold uppercase tracking-wider text-slate-300">Comedor</button>
-
-                    <button onclick="enviarACocina()" class="btn-raised h-12 text-xs font-bold uppercase tracking-wider text-sky-300 bg-sky-500/10 border-sky-500/30">Enviar</button>
-                    <button onclick="abrirModalPago()" class="btn-raised h-12 text-xs font-bold uppercase tracking-wider text-emerald-300 bg-emerald-500/10 border-emerald-500/30">Pago</button>
-                    
-                    <!-- Botón Más (+) -->
-                    <button onclick="abrirMenuMas()" class="btn-raised h-12 text-2xl font-bold text-amber-300 flex items-center justify-center bg-amber-500/10 border-amber-500/30">+</button>
-                </div>
-
-                <!-- Botón Cancelar Orden (Pide NIP Gerente) -->
-                <button onclick="cancelarOrdenGerente()" class="w-full mt-2 py-2 rounded-xl text-xs font-bold uppercase tracking-wider text-rose-400 bg-rose-500/10 border border-rose-500/20 hover:bg-rose-500/20 transition-all">
-                    🚫 Cancelar Orden (Gerente)
-                </button>
-            </div>
-        </section>
-
-        <!-- PANEL DERECHO: CATEGORÍAS Y CATALOGO DINÁMICO -->
-        <section class="glass-panel w-7/12 flex flex-col p-6 gap-4 overflow-hidden">
             
-            <!-- Barra Superior de Categorías Dinámicas -->
-            <div class="flex items-center gap-3 overflow-x-auto pb-2 shrink-0" id="categories-bar">
-                <!-- Se rellena vía JSON de Firebase -->
-                <button class="btn-raised px-5 py-2.5 text-sm font-bold whitespace-nowrap category-tab-active">Todos</button>
+            <div class="border-t border-white/10 pt-2">
+                <div class="flex justify-between items-baseline mb-2">
+                    <span class="text-xs uppercase font-bold opacity-70">Total MXN</span>
+                    <span class="text-2xl md:text-3xl font-black text-emerald-400" id="total-mxn">$0.00</span>
+                </div>
                 
-                <!-- Botón (+) Agregar Categoría (Solo Visible en Modo Edición Gerente) -->
-                <button id="btn-add-category" onclick="abrirModalAgregarCategoria()" class="hidden btn-sunken px-4 py-2 text-amber-400 font-bold text-sm shrink-0">
-                    + Categoria
-                </button>
-            </div>
-
-            <!-- Grilla Dinámica de Platillos (Visual-First) -->
-            <div class="flex-1 overflow-y-auto pr-1">
-                <div class="grid grid-cols-3 gap-4" id="products-grid">
-                    <!-- Contenedor Vacío: Firebase inyectará los platillos aquí -->
-                    <div id="empty-state" class="col-span-3 text-center py-24 text-slate-500">
-                        <p class="text-4xl mb-2">🍽️</p>
-                        <p class="font-medium text-base">Cargando menú desde Firebase...</p>
-                        <p class="text-xs text-slate-600 mt-1">Si el menú está vacío, actívalo con el botón del Lápiz (Gerente).</p>
-                    </div>
+                <!-- Botones Acción Compactos para Celular -->
+                <div class="grid grid-cols-3 gap-1.5 text-[10px] md:text-xs">
+                    <button class="btn-raised py-2 font-bold uppercase">Domicilio</button>
+                    <button class="btn-raised py-2 font-bold uppercase">Llevar</button>
+                    <button class="btn-raised py-2 font-bold uppercase">Comedor</button>
+                    <button class="btn-raised py-2 font-bold uppercase text-sky-400">Enviar</button>
+                    <button class="btn-raised py-2 font-bold uppercase text-emerald-400">Pago</button>
+                    <button onclick="abrirModalProducto()" id="btn-add-prod-quick" class="btn-raised py-2 text-base font-bold text-amber-300 bg-amber-500/10">+</button>
                 </div>
             </div>
         </section>
 
+        <!-- PANEL CATÁLOGOS Y PLATILLOS (Abajo en celular vertical / Derecha en Horizontal) -->
+        <section class="glass-panel w-full md:w-7/12 h-1/2 md:h-full flex flex-col p-3 md:p-5 gap-3 overflow-hidden">
+            
+            <!-- Categorías con Scroll Horizontal Fina -->
+            <div class="flex items-center gap-2 overflow-x-auto pb-1 shrink-0" id="categories-bar">
+                <button onclick="filtrarCategoria('Todos')" class="btn-raised px-4 py-2 text-xs md:text-sm font-bold whitespace-nowrap">Todos</button>
+                <button id="btn-add-category" onclick="guardarCategoriaServer()" class="hidden btn-sunken px-3 py-1.5 text-amber-400 font-bold text-xs shrink-0">+ Categoria</button>
+            </div>
+
+            <!-- Grilla Responsive (2 cols en celular, 3 en Tablet, 3 en PC) -->
+            <div class="flex-1 overflow-y-auto pr-1">
+                <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 md:gap-3" id="products-grid">
+                    <!-- Se carga dinámicamente desde Firebase -->
+                </div>
+            </div>
+        </section>
     </main>
 
-    <!-- MODAL MENU MAS (+) -->
-    <div id="modal-menu-mas" class="hidden fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center z-50 p-4">
-        <div class="glass-panel w-full max-w-md p-6 space-y-4 border border-white/20 shadow-2xl">
-            <div class="flex justify-between items-center border-b border-white/10 pb-3">
-                <h3 class="text-xl font-black text-amber-300">Opciones General</h3>
-                <button onclick="cerrarModalMas()" class="btn-sunken w-8 h-8 text-slate-400">✕</button>
-            </div>
-
-            <div class="space-y-3">
-                <button onclick="verTodasLasOrdenes()" class="btn-raised w-full p-4 text-left font-bold flex items-center gap-3 text-slate-200">
-                    <span>📜</span> Todas las Órdenes del Día
-                </button>
-                <button onclick="verPedidosRepas()" class="btn-raised w-full p-4 text-left font-bold flex items-center gap-3 text-slate-200">
-                    <span>🛵</span> Pedidos Repartidores & Puente
-                </button>
-                <button onclick="ejecutarCorteCaja()" class="btn-raised w-full p-4 text-left font-bold flex items-center gap-3 text-emerald-400">
-                    <span>💵</span> Realizar Corte de Caja
-                </button>
-
-                <!-- Sección Restringida solo a Gerentes -->
-                <div id="seccion-gerente-modal" class="hidden border-t border-white/10 pt-3 space-y-3">
-                    <p class="text-xs font-bold uppercase tracking-widest text-amber-400">Administración Gerente</p>
-                    <button onclick="abrirGestionEmpleados()" class="btn-raised w-full p-4 text-left font-bold flex items-center gap-3 text-amber-300 bg-amber-500/10">
-                        <span>👥</span> Editar Empleados (Altas/Bajas)
-                    </button>
-                    <button onclick="abrirGestionCocinas()" class="btn-raised w-full p-4 text-left font-bold flex items-center gap-3 text-amber-300 bg-amber-500/10">
-                        <span>🍳</span> Configurar Cocinas (Estaciones)
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- MODAL AGREGAR PLATILLO (Solo Gerente) -->
-    <div id="modal-agregar-producto" class="hidden fixed inset-0 bg-black/75 backdrop-blur-md flex items-center justify-center z-50 p-4">
-        <div class="glass-panel w-full max-w-lg p-6 space-y-4 border border-white/20">
-            <h3 class="text-xl font-black text-amber-400 border-b border-white/10 pb-2">➕ Agregar Nuevo Platillo</h3>
-            
-            <form id="form-nuevo-producto" class="space-y-3 text-sm">
+    <!-- MODAL AGREGAR PLATILLO (GERENTE) -->
+    <div id="modal-agregar-producto" class="hidden fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
+        <div class="glass-panel w-full max-w-md p-5 space-y-3">
+            <h3 class="text-lg font-black text-amber-400 border-b border-white/10 pb-2">➕ Agregar Nuevo Platillo</h3>
+            <form id="form-nuevo-producto" class="space-y-2 text-xs md:text-sm">
                 <div>
-                    <label class="block text-slate-400 text-xs font-bold mb-1">Nombre del Platillo</label>
-                    <input type="text" id="prod-nombre" required class="btn-sunken w-full px-4 py-2.5 text-white outline-none focus:border-sky-400" placeholder="Ej. Rollo Dragón Special">
+                    <label class="block text-slate-400 text-[10px] mb-1">Nombre</label>
+                    <input type="text" id="prod-nombre" required class="btn-sunken w-full px-3 py-2 text-white outline-none" placeholder="Ej. Dragón Roll">
                 </div>
-                <div class="grid grid-cols-2 gap-3">
+                <div class="grid grid-cols-2 gap-2">
                     <div>
-                        <label class="block text-slate-400 text-xs font-bold mb-1">Precio ($ MXN)</label>
-                        <input type="number" id="prod-precio" step="0.01" required class="btn-sunken w-full px-4 py-2.5 text-white outline-none focus:border-sky-400" placeholder="180.00">
+                        <label class="block text-slate-400 text-[10px] mb-1">Precio ($ MXN)</label>
+                        <input type="number" id="prod-precio" step="0.01" required class="btn-sunken w-full px-3 py-2 text-white outline-none" placeholder="180">
                     </div>
                     <div>
-                        <label class="block text-slate-400 text-xs font-bold mb-1">Categoría</label>
-                        <select id="prod-categoria" class="btn-sunken w-full px-4 py-2.5 text-white outline-none bg-slate-900"></select>
+                        <label class="block text-slate-400 text-[10px] mb-1">Categoría</label>
+                        <select id="prod-categoria" class="btn-sunken w-full px-3 py-2 text-white outline-none bg-slate-900"></select>
                     </div>
                 </div>
                 <div>
-                    <label class="block text-slate-400 text-xs font-bold mb-1">URL de la Foto</label>
-                    <input type="url" id="prod-foto" required class="btn-sunken w-full px-4 py-2.5 text-white outline-none focus:border-sky-400" placeholder="https://...">
+                    <label class="block text-slate-400 text-[10px] mb-1">URL Foto (Imagen)</label>
+                    <input type="url" id="prod-foto" required class="btn-sunken w-full px-3 py-2 text-white outline-none" placeholder="https://...">
                 </div>
                 <div>
-                    <label class="block text-slate-400 text-xs font-bold mb-1">Ingredientes & Receta (Para Cocina)</label>
-                    <textarea id="prod-ingredientes" rows="3" class="btn-sunken w-full p-3 text-white outline-none focus:border-sky-400" placeholder="Arroz, alga, queso crema, aguacate, camarón empanizado..."></textarea>
+                    <label class="block text-slate-400 text-[10px] mb-1">Ingredientes (Cocina)</label>
+                    <textarea id="prod-ingredientes" rows="2" class="btn-sunken w-full p-2 text-white outline-none" placeholder="Ingredientes y notas..."></textarea>
                 </div>
-
-                <div class="flex gap-3 pt-2">
-                    <button type="button" onclick="cerrarModalProducto()" class="btn-raised w-1/2 py-3 font-bold text-slate-400">Cancelar</button>
-                    <button type="submit" class="btn-raised w-1/2 py-3 font-bold text-amber-300 bg-amber-500/20 border-amber-500/40">Guardar Platillo</button>
+                
+                <div class="flex gap-2 pt-2">
+                    <button type="button" onclick="cerrarModalProducto()" class="btn-raised w-1/2 py-2 font-bold">Cancelar</button>
+                    <button type="submit" class="btn-raised w-1/2 py-2 font-bold text-amber-300 bg-amber-500/20">Guardar</button>
                 </div>
             </form>
         </div>
     </div>
 
-    <!-- LOGICA JS BASE DE INTERFAZ -->
+    <!-- SCRIPT DE TICKET Y TEMAS -->
     <script>
-        let esGerente = false;
-        let modoEdicion = false;
+        let total = 0;
+        let countItems = 0;
+        let esModoClaro = false;
 
-        // Simulación de detección de Rol (Se conecta a Firebase)
-        function inicializarRol(rol) {
-            if (rol === 'gerente') {
-                esGerente = true;
-                document.getElementById('btn-edit-mode').classList.remove('hidden');
-                document.getElementById('badge-gerente').classList.remove('hidden');
-                document.getElementById('seccion-gerente-modal').classList.remove('hidden');
-            }
+        function toggleTema() {
+            esModoClaro = !esModoClaro;
+            document.body.classList.toggle("light-mode");
+            document.getElementById("btn-theme").innerText = esModoClaro ? "☀️" : "🌙";
         }
 
-        // Alternar Modo Edición Gerente (Lápiz)
         function toggleModoEdicion() {
-            modoEdicion = !modoEdicion;
-            const btnEdit = document.getElementById('btn-edit-mode');
-            const btnAddCat = document.getElementById('btn-add-category');
-
-            if (modoEdicion) {
-                btnEdit.classList.add('border-amber-400', 'bg-amber-500/20');
-                btnAddCat.classList.remove('hidden');
-                alert("✏️ MODO EDICIÓN ACTIVADO: Ahora puedes añadir platillos y categorías.");
-            } else {
-                btnEdit.classList.remove('border-amber-400', 'bg-amber-500/20');
-                btnAddCat.classList.add('hidden');
+            const btnAdd = document.getElementById("btn-add-category");
+            btnAdd.classList.toggle("hidden");
+            if(!btnAdd.classList.contains("hidden")) {
+                abrirModalProducto();
             }
         }
 
-        // Abrir Menú (+)
-        function abrirMenuMas() {
-            document.getElementById('modal-menu-mas').classList.remove('hidden');
+        function agregarAlTicket(nombre, precio) {
+            total += precio;
+            countItems++;
+            document.getElementById("total-mxn").innerText = `$${total.toFixed(2)}`;
+            document.getElementById("total-items").innerText = `${countItems} items`;
+            
+            const ticket = document.getElementById("ticket-items");
+            ticket.innerHTML += `
+                <div class="flex justify-between items-center btn-sunken p-2 text-xs">
+                    <span class="font-bold truncate max-w-[150px]">${nombre}</span>
+                    <span class="font-black text-amber-400">$${precio}</span>
+                </div>
+            `;
         }
 
-        function cerrarModalMas() {
-            document.getElementById('modal-menu-mas').classList.add('hidden');
-        }
-
-        // Prueba inicial (Activa rol gerente para pruebas de UI)
-        inicializarRol('gerente');
+        function abrirModalProducto() { document.getElementById("modal-agregar-producto").classList.remove("hidden"); }
+        function cerrarModalProducto() { document.getElementById("modal-agregar-producto").classList.add("hidden"); }
     </script>
 </body>
 </html>
