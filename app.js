@@ -115,3 +115,41 @@ function iniciarSesionUnica(businessToken, userRole, userName, areaCocina) {
         alert("⚠️ Error de conexión con el servidor.");
     });
 }
+// ==========================================
+// CONTROL DE PANTALLAS Y CÁMARA QR
+// ==========================================
+let html5QrcodeScanner = null;
+
+function abrirEscaner() {
+    // 1. Ocultar pantalla de bienvenida y mostrar la del lector/PIN
+    const welcomeScreen = document.getElementById('welcome-screen');
+    const scannerScreen = document.getElementById('scanner-screen');
+
+    if (welcomeScreen) welcomeScreen.classList.remove('active');
+    if (welcomeScreen) welcomeScreen.classList.add('hidden');
+
+    if (scannerScreen) scannerScreen.classList.remove('hidden');
+    if (scannerScreen) scannerScreen.classList.add('active');
+
+    // 2. Inicializar escáner de cámara (si está disponible la librería)
+    if (typeof Html5QrcodeScanner !== 'undefined') {
+        if (!html5QrcodeScanner) {
+            html5QrcodeScanner = new Html5QrcodeScanner(
+                "reader", 
+                { fps: 10, qrbox: { width: 250, height: 250 } },
+                /* verbose= */ false
+            );
+            html5QrcodeScanner.render(onScanSuccess, onScanFailure);
+        }
+    }
+}
+
+function onScanSuccess(decodedText, decodedResult) {
+    // Si escanean un QR de sesión
+    console.log(`Código QR detectado: ${decodedText}`);
+    // Aquí puedes procesar el QR si el empleado lo usa en lugar de NIP
+}
+
+function onScanFailure(error) {
+    // Manejo silencioso de lectura de frames sin QR
+}
