@@ -16,7 +16,6 @@ let currentBusinessData = {
     business_name: "",
     status: "unregistered",
     pins: {},
-    pins_area: {},
     menu: []
 };
 
@@ -24,27 +23,12 @@ let html5QrcodeScanner = null;
 let inputPin = "";
 
 // ==========================================
-// 1. TRANSICIÓN DE PANTALLA Y LECTOR QR
+// 1. ESCÁNER QR DE ACCESO / GERENTE
 // ==========================================
 function abrirEscaner() {
-    const welcomeScreen = document.getElementById('welcome-screen');
-    const scannerScreen = document.getElementById('scanner-screen');
-
-    // Transición visual limpia entre pantallas
-    if (welcomeScreen) {
-        welcomeScreen.classList.remove('active');
-        welcomeScreen.classList.add('hidden');
-    }
+    document.getElementById('welcome-screen').classList.add('hidden');
+    document.getElementById('scanner-screen').classList.remove('hidden');
     
-    if (scannerScreen) {
-        scannerScreen.classList.remove('hidden');
-        scannerScreen.classList.add('active');
-    }
-
-    // Inicializar soporte para teclado físico
-    iniciarSoporteTeclado();
-
-    // Inicializar el escáner si está la librería Html5QrcodeScanner cargada
     if (typeof Html5QrcodeScanner !== "undefined") {
         const config = {
             fps: 15,
@@ -61,15 +45,23 @@ function abrirEscaner() {
             formatsToSupport: [ Html5QrcodeSupportedFormats.QR_CODE ]
         };
 
-        if (!html5QrcodeScanner) {
-            html5QrcodeScanner = new Html5QrcodeScanner("reader", config, false);
-            html5QrcodeScanner.render((tokenLeido) => {
-                if (html5QrcodeScanner) html5QrcodeScanner.clear();
-                procesarTokenAcceso(tokenLeido);
-            }, (error) => {
-                // Silenciamos los errores de lectura frame a frame
-            });
-        }
+        html5QrcodeScanner = new Html5QrcodeScanner("reader", config, false);
+        html5QrcodeScanner.render((tokenLeido) => {
+            if(html5QrcodeScanner) html5QrcodeScanner.clear();
+            procesarTokenAcceso(tokenLeido);
+        }, (error) => {
+            // Silenciamos los errores de lectura frame a frame
+        });
+    }
+}
+
+function validarTokenManual() {
+    const token = document.getElementById('manual-token').value.trim();
+    if(token !== "") {
+        if(html5QrcodeScanner) html5QrcodeScanner.clear();
+        procesarTokenAcceso(token);
+    } else {
+        alert("Por favor ingresa un código válido.");
     }
 }
 
@@ -103,7 +95,12 @@ function procesarTokenAcceso(rawToken) {
                 }
 
                 currentBusinessData = data;
-                alert(`✅ Negocio detectado: ${currentBusinessData.business_name || 'Food OS'}`);
+                document.getElementById('business-title').innerText = currentBusinessData.business_name;
+                document.getElementById('scanner-screen').classList.add('hidden');
+                document.getElementById('lockscreen').classList.remove('hidden');
+                
+                iniciarReloj();
+                iniciarSoporteTeclado();
             } else {
                 alert(`❌ El código "${cleanToken}" no está registrado.`);
                 location.reload();
@@ -111,11 +108,12 @@ function procesarTokenAcceso(rawToken) {
         })
         .catch(err => {
             alert(`⚠️ Error al conectar con Firebase.`);
+            location.reload();
         });
 }
 
 // ==========================================
-// 2. AUTENTICACIÓN POR QR GERENTE
+// 2. LÓGICA DE GERENTE POR QR DIRECTO
 // ==========================================
 function autenticarGerentePorQR(qrCode) {
     fetch(`${FIREBASE_URL}/businesses.json`)
@@ -136,7 +134,7 @@ function autenticarGerentePorQR(qrCode) {
                 currentBusinessToken = negocioEncontradoKey;
                 currentBusinessData = negocioData;
                 alert(`👑 ¡Bienvenido Gerente ${negocioData.gerente.nombre}!\nAcceso directo concedido.`);
-                iniciarSesionUnica(negocioEncontradoKey, "admin", negocioData.gerente.nombre, "general");
+                iniciarSesionUnica(negocioEncontradoKey, "admin", negocioData.gerente.nombre);
             } else {
                 alert("❌ Código QR de Gerente no reconocido.");
                 location.reload();
@@ -145,13 +143,26 @@ function autenticarGerentePorQR(qrCode) {
 }
 
 // ==========================================
-// 3. TECLADO NUMÉRICO Y PIN
+// 3. RELOJ Y TECLADO PIN
 // ==========================================
-function pressPin(num) {
+function iniciarReloj() {
+    setInterval(() => {
+        const now = new Date();
+        document.getElementById('clock-display').innerText = 
+            now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }, 1000);
+}
+
+function pressPin(n) {
     if (inputPin.length < 4) {
-        inputPin += num;
+        inputPin += n;
         actualizarPinDisplay();
     }
+}
+
+function actualizarPinDisplay() {
+    const pinDisplay = document.getElementById('pin-display');
+    pinDisplay.value = "•".repeat(inputPin.length);
 }
 
 function borrarPin() {
@@ -165,58 +176,40 @@ function actionExitOrClear() {
     if (inputPin.length > 0) {
         borrarPin();
     } else {
+        location.reload();
+    }
+}
+
+function submitPin() {
+    if (currentBusinessData.pins && currentBusinessData.pins[inputPin]) {
+        const rol = currentBusinessData.pins[inputPin];
+        let userName = rol.toUpperCase();
+
+        // Si el PIN coincide con el del Gerente
+        if (currentBusinessData.gerente && currentBusinessData.gerente.pin === inputPin) {
+            userName = currentBusinessData.gerente.nombre;
+        }
+
+        // Detección automática del área de cocina (si existe)
+        const areaCocina = (currentBusinessData.pins_area && currentBusinessData.pins_area[inputPin]) 
+            ? currentBusinessData.pins_area[inputPin] 
+            : "general";
+
+        iniciarSesionUnica(currentBusinessToken, rol, userName, areaCocina);
+    } else {
+        alert("❌ PIN Incorrecto.");
         inputPin = "";
         actualizarPinDisplay();
     }
 }
 
-function actualizarPinDisplay() {
-    const display = document.getElementById('pin-display');
-    if (display) {
-        display.value = "•".repeat(inputPin.length);
-    }
-}
-
-function submitPin() {
-    if (inputPin.length === 0) {
-        alert("⚠️ Ingresa tu PIN de 4 dígitos.");
-        return;
-    }
-
-    // Si hay datos cargados del negocio, busca el PIN
-    if (currentBusinessData && currentBusinessData.pins && currentBusinessData.pins[inputPin]) {
-        const rol = currentBusinessData.pins[inputPin];
-        let userName = rol.toUpperCase();
-
-        if (currentBusinessData.gerente && currentBusinessData.gerente.pin === inputPin) {
-            userName = currentBusinessData.gerente.nombre;
-        }
-
-        const areaCocina = (currentBusinessData.pins_area && currentBusinessData.pins_area[inputPin]) 
-            ? currentBusinessData.pins_area[inputPin] 
-            : "general";
-
-        iniciarSesionUnica(currentBusinessToken || "TOKEN_CUBITO_01", rol, userName, areaCocina);
-    } else {
-        // Validación directa de respaldo para pruebas rápidas
-        if (inputPin === "1234" || inputPin === "1525") {
-            const rol = (inputPin === "1525") ? "admin" : "caja";
-            iniciarSesionUnica("TOKEN_CUBITO_01", rol, "Empleado Demo", "general");
-        } else if (inputPin === "5555" || inputPin === "5556") {
-            const area = (inputPin === "5555") ? "barra_fria" : "cocina_caliente";
-            iniciarSesionUnica("TOKEN_CUBITO_01", "cocina", "Cocinero", area);
-        } else if (inputPin === "7777") {
-            iniciarSesionUnica("TOKEN_CUBITO_01", "repartidor", "Repartidor", "general");
-        } else {
-            alert("❌ PIN Incorrecto");
-            inputPin = "";
-            actualizarPinDisplay();
-        }
-    }
-}
-
 function iniciarSoporteTeclado() {
+    const pinDisplay = document.getElementById('pin-display');
+    if (pinDisplay) pinDisplay.setAttribute('readonly', 'true');
+
     window.addEventListener('keydown', (e) => {
+        if (document.getElementById('lockscreen').classList.contains('hidden')) return;
+
         if (e.key >= '0' && e.key <= '9') {
             pressPin(e.key);
         } else if (e.key === 'Backspace') {
@@ -227,8 +220,13 @@ function iniciarSoporteTeclado() {
     });
 }
 
+function cambiarFondoLockscreen() {
+    fondoIndex = (fondoIndex + 1) % fondos.length;
+    document.getElementById('lockscreen').style.backgroundImage = `url('${fondos[fondoIndex]}')`;
+}
+
 // ==========================================
-// 4. SESIÓN ÚNICA Y RUTEO POR ROLES
+// 4. SEGURIDAD Y RUTEO POR ROL
 // ==========================================
 function iniciarSesionUnica(businessToken, userRole, userName, areaCocina = "general") {
     const newSessionId = "SESS_" + Date.now() + "_" + Math.random().toString(36).substr(2, 5);
@@ -238,45 +236,42 @@ function iniciarSesionUnica(businessToken, userRole, userName, areaCocina = "gen
         body: JSON.stringify(newSessionId)
     })
     .then(() => {
+        // Guardar sesión localmente
         localStorage.setItem('foodos_session_token', newSessionId);
         localStorage.setItem('foodos_business_token', businessToken);
         localStorage.setItem('foodos_business_data', JSON.stringify(currentBusinessData));
         localStorage.setItem('foodos_role', userRole);
         localStorage.setItem('foodos_user_name', userName);
 
-        // 🔀 RUTEO AUTOMÁTICO DE FOOD OS SEGÚN ROL
-        switch (userRole) {
-            case 'admin':
-            case 'gerente':
-            case 'caja':
-            case 'cajero':
-                window.location.href = 'caja.html';
-                break;
+        // Iniciar vigilancia remota
+        escucharCierreDeSesionRemoto(businessToken, newSessionId);
 
-            case 'cocina':
-            case 'cocinero':
-            case 'pizzero':
-                window.location.href = `cocina.html?area=${areaCocina}`;
-                break;
-
-            case 'repartidor':
-            case 'repa':
-                window.location.href = 'repa.html';
-                break;
-
-            default:
-                alert("⚠️ Rol no asignado en el sistema.");
-                break;
-        }
-    })
-    .catch(err => {
-        // Redirección en caso de falla de red/demo
-        if (userRole === 'cocina' || userRole === 'cocinero') {
+        // 🔀 REDIRECCIÓN SEGÚN EL ROL
+        if (userRole === 'caja' || userRole === 'admin' || userRole === 'gerente') {
+            window.location.href = 'caja.html';
+        } else if (userRole === 'cocina' || userRole === 'cocinero' || userRole === 'pizzero') {
             window.location.href = `cocina.html?area=${areaCocina}`;
         } else if (userRole === 'repartidor' || userRole === 'repa') {
             window.location.href = 'repa.html';
         } else {
             window.location.href = 'caja.html';
         }
+    })
+    .catch(err => {
+        alert("⚠️ Error al registrar la sesión en el servidor.");
     });
+}
+
+function escucharCierreDeSesionRemoto(businessToken, mySessionId) {
+    setInterval(() => {
+        fetch(`${FIREBASE_URL}/businesses/${businessToken}/active_session_token.json`)
+            .then(res => res.json())
+            .then(remoteSessionId => {
+                if (remoteSessionId && remoteSessionId !== mySessionId) {
+                    alert("⚠️ ALERTA DE SEGURIDAD\n\nSe ha iniciado sesión desde otro dispositivo en este negocio. Cerrando sesión...");
+                    localStorage.clear();
+                    window.location.href = 'index.html';
+                }
+            });
+    }, 5000);
 }
