@@ -8,7 +8,7 @@
     
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-        import { getDatabase, ref, push, onValue, remove } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+        import { getDatabase, ref, push, onValue } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyDD5YehD45blgPdbDCUEcwSnqBjdA_eZlE",
@@ -23,25 +23,26 @@
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
 
-        // 🛡️ Sesión y Rol
+        // 🛡️ SESIÓN Y MULTI-TENANT DINÁMICO
         const currentSucursal = localStorage.getItem("foodos_sucursal") || "cubito_sushi";
         const usuarioActivo = localStorage.getItem("foodos_usuario") || "Empleado General"; 
-        const esGerente = localStorage.getItem("foodos_es_gerente") === "true"; // Control estricto de gerente
+        const esGerente = localStorage.getItem("foodos_es_gerente") === "true";
         
         const sucursalRef = `sucursales/${currentSucursal}`;
 
-        // Inyectar Datos de UI
+        // 🔥 INYECCIÓN CORREGIDA DEL NOMBRE DE LA SUCURSAL REAL
+        const nombreSucursalFormateado = currentSucursal.replace(/_/g, " ").toUpperCase();
+        document.getElementById("nombre-sucursal").innerText = nombreSucursalFormateado;
         document.getElementById("nombre-cajero").innerText = usuarioActivo;
-        document.getElementById("nombre-sucursal").innerText = currentSucursal.replace("_", " ").toUpperCase();
 
-        // Control Visual de Gerente (Lápiz y Secciones de Admin)
+        // Control de Gerente
         if (esGerente) {
-            document.getElementById("btn-edit-mode").classList.remove("hidden");
-            document.getElementById("badge-gerente").classList.remove("hidden");
-            document.getElementById("seccion-modal-gerente").classList.remove("hidden");
+            document.getElementById("btn-edit-mode")?.classList.remove("hidden");
+            document.getElementById("badge-gerente")?.classList.remove("hidden");
+            document.getElementById("seccion-modal-gerente")?.classList.remove("hidden");
         }
 
-        // 📂 1. Carga Dinámica de Categorías
+        // 📂 1. Categorías desde Firebase
         let menuCompleto = {};
         onValue(ref(db, `${sucursalRef}/categorias`), (snapshot) => {
             const data = snapshot.val();
@@ -62,7 +63,7 @@
             container.appendChild(addBtn);
         });
 
-        // 📥 2. Carga Dinámica del Menú Compartido en Realtime
+        // 📥 2. Menú desde Firebase
         onValue(ref(db, `${sucursalRef}/menu`), (snapshot) => {
             menuCompleto = snapshot.val() || {};
             renderizarProductos(menuCompleto);
@@ -73,7 +74,7 @@
             grid.innerHTML = "";
 
             if (Object.keys(productos).length === 0) {
-                grid.innerHTML = `<div class="col-span-full text-center py-12 text-slate-400 font-medium text-sm">El menú está vacío en ${currentSucursal}.</div>`;
+                grid.innerHTML = `<div class="col-span-full text-center py-12 text-slate-400 font-medium text-sm">El menú está vacío en ${nombreSucursalFormateado}.</div>`;
                 return;
             }
 
@@ -104,7 +105,7 @@
             }
         };
 
-        // ✏️ AÑADIR PLATILLO (Cierra Modal Automáticamente)
+        // ✏️ AÑADIR PLATILLO (Cierra modal al guardar)
         document.getElementById("form-nuevo-producto").addEventListener("submit", (e) => {
             e.preventDefault();
             const nuevoPlatillo = {
@@ -117,7 +118,7 @@
 
             push(ref(db, `${sucursalRef}/menu`), nuevoPlatillo).then(() => {
                 document.getElementById("form-nuevo-producto").reset();
-                cerrarModalProducto(); // 🔥 Te regresa a la interfaz directamente
+                cerrarModalProducto();
             });
         });
 
@@ -182,14 +183,15 @@
 </head>
 <body class="p-2 md:p-4 flex flex-col gap-3 h-screen overflow-hidden">
 
-    <!-- HEADER -->
+    <!-- HEADER DINÁMICO -->
     <header class="glass-panel h-14 md:h-16 px-4 md:px-6 flex justify-between items-center shrink-0">
         <div class="flex items-center gap-2 md:gap-3 overflow-hidden">
             <span class="text-xl md:text-2xl">🍣</span>
             <div class="flex flex-col">
-                <h1 class="text-xs md:text-lg font-black truncate" id="nombre-sucursal">Cargando...</h1>
+                <!-- AHORA LEE EL LOCAL DE MANERA DINÁMICA DE VERDAD -->
+                <h1 class="text-xs md:text-lg font-black truncate text-amber-400" id="nombre-sucursal">CARGANDO LOCAL...</h1>
                 <div class="flex items-center gap-1">
-                    <span class="text-[10px] md:text-xs text-amber-400 font-bold" id="nombre-cajero">Cajero</span>
+                    <span class="text-[10px] md:text-xs text-slate-300 font-bold" id="nombre-cajero">Cajero</span>
                     <span id="badge-gerente" class="hidden text-[9px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full font-extrabold uppercase">Gerente</span>
                 </div>
             </div>
@@ -209,10 +211,9 @@
         <section class="glass-panel w-full md:w-5/12 h-1/2 md:h-full flex flex-col p-3 md:p-5 gap-2 shrink-0">
             <div class="flex justify-between items-center border-b border-white/10 pb-2">
                 <h2 class="text-base md:text-xl font-black">info orden</h2>
-                <span class="text-[10px] text-slate-400">Doble clic para nota de cocina</span>
+                <span class="text-[10px] text-slate-400">Doble clic para nota</span>
             </div>
 
-            <!-- Lista de items en comanda -->
             <div id="ticket-items" class="flex-1 overflow-y-auto space-y-2 pr-1"></div>
             
             <div class="border-t border-white/10 pt-2">
@@ -227,14 +228,12 @@
                     <button class="btn-raised py-2 font-bold uppercase">Comedor</button>
                     <button class="btn-raised py-2 font-bold uppercase text-sky-400">Enviar</button>
                     <button class="btn-raised py-2 font-bold uppercase text-emerald-400">Pago</button>
-                    
-                    <!-- BOTÓN (+) ORIGINAL: Abre Opciones Generales -->
                     <button onclick="abrirModalMas()" class="btn-raised py-2 text-base font-bold text-amber-300 bg-amber-500/10">+</button>
                 </div>
             </div>
         </section>
 
-        <!-- PANEL DERECHO PLATILLOS -->
+        <!-- PANEL PRODUCTOS -->
         <section class="glass-panel w-full md:w-7/12 h-1/2 md:h-full flex flex-col p-3 md:p-5 gap-3 overflow-hidden">
             <div class="flex items-center gap-2 overflow-x-auto pb-1 shrink-0" id="categories-bar">
                 <button onclick="filtrarCategoria('Todos')" class="btn-raised px-4 py-2 text-xs md:text-sm font-bold whitespace-nowrap">Todos</button>
@@ -247,7 +246,7 @@
         </section>
     </main>
 
-    <!-- MODAL MENÚ (+) MÁS -->
+    <!-- MODAL MENU (+ MÁS) -->
     <div id="modal-menu-mas" class="hidden fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
         <div class="glass-panel w-full max-w-sm p-5 space-y-3">
             <div class="flex justify-between items-center border-b border-white/10 pb-2">
@@ -260,7 +259,6 @@
                 <button class="btn-raised w-full p-3 text-left">🛵 Pedidos Repas & Puente</button>
                 <button class="btn-raised w-full p-3 text-left text-emerald-400">💵 Realizar Corte de Caja</button>
 
-                <!-- Exclusivo Gerente -->
                 <div id="seccion-modal-gerente" class="hidden border-t border-white/10 pt-2 space-y-2">
                     <p class="text-[10px] text-amber-400 uppercase tracking-widest">Admin Gerente</p>
                     <button class="btn-raised w-full p-3 text-left text-amber-300">👥 Gestión de Empleados</button>
@@ -291,7 +289,7 @@
         </div>
     </div>
 
-    <!-- SCRIPT DE MANEJO DE TICKET Y NOTAS -->
+    <!-- SCRIPT TICKET Y NOTAS -->
     <script>
         let ticketArray = [];
         let esModoClaro = false;
@@ -302,9 +300,7 @@
             document.getElementById("btn-theme").innerText = esModoClaro ? "☀️" : "🌙";
         }
 
-        function toggleModoEdicion() {
-            abrirModalProducto();
-        }
+        function toggleModoEdicion() { abrirModalProducto(); }
 
         function agregarAlTicket(nombre, precio) {
             const item = { id: Date.now(), nombre, precio, nota: "" };
@@ -354,7 +350,6 @@
 
         function abrirModalProducto() { document.getElementById("modal-agregar-producto").classList.remove("hidden"); }
         function cerrarModalProducto() { document.getElementById("modal-agregar-producto").classList.add("hidden"); }
-        
         function abrirModalMas() { document.getElementById("modal-menu-mas").classList.remove("hidden"); }
         function cerrarModalMas() { document.getElementById("modal-menu-mas").classList.add("hidden"); }
     </script>
