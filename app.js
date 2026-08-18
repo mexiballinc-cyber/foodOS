@@ -67,9 +67,14 @@ function validarTokenManual() {
 
 function procesarTokenAcceso(rawToken) {
     let cleanToken = rawToken.trim();
+    
+    // Si el QR escaneado es una URL completa, extraemos solo el último parámetro o fragmento
     if (cleanToken.includes('/')) {
-        const parts = cleanToken.split('/');
-        cleanToken = parts[parts.length - 1] || parts[parts.length - 2];
+        const parts = cleanToken.split('/').filter(p => p.length > 0);
+        cleanToken = parts[parts.length - 1];
+    }
+    if (cleanToken.includes('?')) {
+        cleanToken = cleanToken.split('?')[0];
     }
 
     // SI ES UN QR DIRECTO DE GERENTE
@@ -102,12 +107,12 @@ function procesarTokenAcceso(rawToken) {
                 iniciarReloj();
                 iniciarSoporteTeclado();
             } else {
-                alert(`❌ El código "${cleanToken}" no está registrado.`);
+                alert(`❌ El código "${cleanToken}" no está registrado en Firebase.`);
                 location.reload();
             }
         })
         .catch(err => {
-            alert(`⚠️ Error al conectar con Firebase.`);
+            alert(`⚠️ Error al conectar con Firebase. Revisa que el código coincida con la base de datos.`);
             location.reload();
         });
 }
@@ -180,22 +185,26 @@ function actionExitOrClear() {
     }
 }
 
+// ==========================================
+// DETECTOR DE EMPLEADOS Y ROLES
+// ==========================================
 function submitPin() {
     if (currentBusinessData.pins && currentBusinessData.pins[inputPin]) {
         const rol = currentBusinessData.pins[inputPin];
         let userName = rol.toUpperCase();
 
-        // Si el PIN coincide con el del Gerente
         if (currentBusinessData.gerente && currentBusinessData.gerente.pin === inputPin) {
             userName = currentBusinessData.gerente.nombre;
+        } 
+        else if (currentBusinessData.empleados && currentBusinessData.empleados[inputPin]) {
+            userName = currentBusinessData.empleados[inputPin].nombre || userName;
         }
 
-        // Detección automática del área de cocina (si existe)
-        const areaCocina = (currentBusinessData.pins_area && currentBusinessData.pins_area[inputPin]) 
-            ? currentBusinessData.pins_area[inputPin] 
+        const areaTrabajo = (currentBusinessData.pins_area && currentBusinessData.pins_area[inputPin])
+            ? currentBusinessData.pins_area[inputPin]
             : "general";
 
-        iniciarSesionUnica(currentBusinessToken, rol, userName, areaCocina);
+        iniciarSesionUnica(currentBusinessToken, rol, userName, areaTrabajo);
     } else {
         alert("❌ PIN Incorrecto.");
         inputPin = "";
@@ -205,7 +214,7 @@ function submitPin() {
 
 function iniciarSoporteTeclado() {
     const pinDisplay = document.getElementById('pin-display');
-    if (pinDisplay) pinDisplay.setAttribute('readonly', 'true');
+    pinDisplay.setAttribute('readonly', 'true');
 
     window.addEventListener('keydown', (e) => {
         if (document.getElementById('lockscreen').classList.contains('hidden')) return;
@@ -226,9 +235,9 @@ function cambiarFondoLockscreen() {
 }
 
 // ==========================================
-// 4. SEGURIDAD Y RUTEO POR ROL
+// 4. SEGURIDAD: CONTROL DE SESIÓN ÚNICA Y PUENTE
 // ==========================================
-function iniciarSesionUnica(businessToken, userRole, userName, areaCocina = "general") {
+function iniciarSesionUnica(businessToken, userRole, userName, areaTrabajo = "general") {
     const newSessionId = "SESS_" + Date.now() + "_" + Math.random().toString(36).substr(2, 5);
 
     fetch(`${FIREBASE_URL}/businesses/${businessToken}/active_session_token.json`, {
@@ -236,21 +245,19 @@ function iniciarSesionUnica(businessToken, userRole, userName, areaCocina = "gen
         body: JSON.stringify(newSessionId)
     })
     .then(() => {
-        // Guardar sesión localmente
         localStorage.setItem('foodos_session_token', newSessionId);
         localStorage.setItem('foodos_business_token', businessToken);
         localStorage.setItem('foodos_business_data', JSON.stringify(currentBusinessData));
         localStorage.setItem('foodos_role', userRole);
         localStorage.setItem('foodos_user_name', userName);
+        localStorage.setItem('foodos_area', areaTrabajo);
 
-        // Iniciar vigilancia remota
         escucharCierreDeSesionRemoto(businessToken, newSessionId);
 
-        // 🔀 REDIRECCIÓN SEGÚN EL ROL
         if (userRole === 'caja' || userRole === 'admin' || userRole === 'gerente') {
             window.location.href = 'caja.html';
         } else if (userRole === 'cocina' || userRole === 'cocinero' || userRole === 'pizzero') {
-            window.location.href = `cocina.html?area=${areaCocina}`;
+            window.location.href = `cocina.html?area=${areaTrabajo}`;
         } else if (userRole === 'repartidor' || userRole === 'repa') {
             window.location.href = 'repa.html';
         } else {
