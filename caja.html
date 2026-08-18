@@ -8,7 +8,7 @@
     
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-        import { getDatabase, ref, push, onValue, get } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+        import { getDatabase, ref, push, onValue, get, remove } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyDD5YehD45blgPdbDCUEcwSnqBjdA_eZlE",
@@ -27,39 +27,33 @@
         const currentSucursal = localStorage.getItem("foodos_business_token") || localStorage.getItem("foodos_sucursal") || "cubito_sushi";
         const usuarioActivo = localStorage.getItem("foodos_user_name") || localStorage.getItem("foodos_usuario") || "Cajero General"; 
         
-        // Detección inteligente de Rol
         const rawRole = (localStorage.getItem("foodos_role") || "").toLowerCase();
         const esGerente = ["admin", "gerente", "owner", "administrador"].includes(rawRole) || localStorage.getItem("foodos_es_gerente") === "true";
 
         const sucursalRef = `businesses/${currentSucursal}`;
+        window.db = db;
+        window.sucursalRef = sucursalRef;
+        window.esGerente = esGerente;
 
-        // 🏬 CONSULTA REAL A FIREBASE PARA EL NOMBRE DEL LOCAL
-        const negocioInfoRef = ref(db, `${sucursalRef}/config/nombreLocal`);
-        onValue(negocioInfoRef, (snapshot) => {
+        // 🏬 NOMBRE DE LOCAL Y CAJERO
+        onValue(ref(db, `${sucursalRef}/config/nombreLocal`), (snapshot) => {
             const nombreReal = snapshot.val();
-            if (nombreReal) {
-                document.getElementById("nombre-sucursal").innerText = nombreReal.toUpperCase();
-            } else {
-                // Respaldo por si aún no han configurado el nombre en Firebase
-                document.getElementById("nombre-sucursal").innerText = currentSucursal.replace(/_/g, " ").toUpperCase();
-            }
+            document.getElementById("nombre-sucursal").innerText = (nombreReal || currentSucursal.replace(/_/g, " ")).toUpperCase();
         });
 
         document.getElementById("nombre-cajero").innerText = `${usuarioActivo} (${rawRole || 'caja'})`;
 
-        // Control de Interfaz según Permisos
         if (esGerente) {
             document.querySelectorAll(".solo-gerente").forEach(el => el.classList.remove("hidden"));
         }
 
-        // 📂 1. Cargar Categorías desde Firebase
-        let menuCompleto = {};
+        // 📂 CATEGORÍAS
+        window.menuCompleto = {};
         onValue(ref(db, `${sucursalRef}/categorias`), (snapshot) => {
             const data = snapshot.val();
             const container = document.getElementById("categories-bar");
             const selectModal = document.getElementById("prod-categoria");
             
-            const addBtn = document.getElementById("btn-add-category");
             container.innerHTML = `<button onclick="filtrarCategoria('Todos')" class="btn-raised px-4 py-2 text-xs md:text-sm font-bold whitespace-nowrap active:scale-95">Todos</button>`;
             selectModal.innerHTML = "";
 
@@ -70,50 +64,23 @@
                     selectModal.innerHTML += `<option value="${cat.nombre}">${cat.nombre}</option>`;
                 });
             }
-            container.appendChild(addBtn);
         });
 
-        // 📥 2. Cargar Menú desde Firebase
+        // 📥 MENÚ
         onValue(ref(db, `${sucursalRef}/menu`), (snapshot) => {
-            menuCompleto = snapshot.val() || {};
-            renderizarProductos(menuCompleto);
+            window.menuCompleto = snapshot.val() || {};
+            renderizarProductos(window.menuCompleto);
         });
 
-        window.renderizarProductos = function(productos) {
-            const grid = document.getElementById("products-grid");
-            grid.innerHTML = "";
-
-            if (Object.keys(productos).length === 0) {
-                grid.innerHTML = `<div class="col-span-full text-center py-12 text-slate-400 font-medium text-sm">El menú está vacío en este local.</div>`;
-                return;
-            }
-
-            Object.keys(productos).forEach(id => {
-                const item = productos[id];
-                grid.innerHTML += `
-                    <div onclick="agregarAlTicket('${item.nombre}', ${item.precio})" class="btn-raised p-3 flex flex-col justify-between h-32 md:h-40 cursor-pointer relative overflow-hidden group active:scale-95">
-                        <img src="${item.foto}" class="absolute inset-0 w-full h-full object-cover opacity-20 group-hover:opacity-40 transition-opacity" />
-                        <span class="text-[10px] md:text-xs font-bold uppercase tracking-wider text-amber-500 z-10">${item.categoria}</span>
-                        <div class="z-10">
-                            <p class="font-bold text-sm md:text-base leading-tight item-title">${item.nombre}</p>
-                            <p class="text-base md:text-lg font-black text-emerald-500 mt-1">$${item.precio} MXN</p>
-                        </div>
-                    </div>
-                `;
+        // 🍳 CARGAR COCINAS EN MODAL
+        onValue(ref(db, `${sucursalRef}/cocinas`), (snapshot) => {
+            const data = snapshot.val() || {};
+            const selectCocina = document.getElementById("prod-cocina");
+            selectCocina.innerHTML = '<option value="general">Cocina Principal</option>';
+            Object.keys(data).forEach(k => {
+                selectCocina.innerHTML += `<option value="${k}">${data[k].nombre}</option>`;
             });
-        };
-
-        window.filtrarCategoria = function(nombreCat) {
-            if (nombreCat === 'Todos') {
-                renderizarProductos(menuCompleto);
-            } else {
-                const filtrados = {};
-                Object.keys(menuCompleto).forEach(key => {
-                    if (menuCompleto[key].categoria === nombreCat) filtrados[key] = menuCompleto[key];
-                });
-                renderizarProductos(filtrados);
-            }
-        };
+        });
 
         // ✏️ AÑADIR PLATILLO (Gerente)
         document.getElementById("form-nuevo-producto").addEventListener("submit", (e) => {
@@ -122,6 +89,7 @@
                 nombre: document.getElementById("prod-nombre").value,
                 precio: parseFloat(document.getElementById("prod-precio").value),
                 categoria: document.getElementById("prod-categoria").value,
+                cocina: document.getElementById("prod-cocina").value,
                 foto: document.getElementById("prod-foto").value,
                 ingredientes: document.getElementById("prod-ingredientes").value
             };
@@ -132,11 +100,6 @@
             });
         });
 
-        window.guardarCategoriaServer = function() {
-            const nombre = prompt("Nombre de la nueva categoría:");
-            if (nombre) push(ref(db, `${sucursalRef}/categorias`), { nombre });
-        };
-
         window.cerrarSesion = function() {
             localStorage.clear();
             window.location.href = "index.html";
@@ -145,10 +108,8 @@
 
     <style>
         :root {
-            --bg-main: #0f172a;
             --bg-gradient: linear-gradient(135deg, #0f172a 0%, #1e2640 100%);
             --text-color: #f8fafc;
-            --text-muted: #94a3b8;
             --glass-bg: rgba(255, 255, 255, 0.05);
             --glass-border: rgba(255, 255, 255, 0.12);
             --shadow-raised: 6px 6px 12px rgba(0, 0, 0, 0.4), -3px -3px 8px rgba(255, 255, 255, 0.05);
@@ -156,12 +117,9 @@
             --input-bg: rgba(0, 0, 0, 0.4);
         }
 
-        /* MODO CLARO ELEGANTE Y MATE */
         .light-mode {
-            --bg-main: #f1f5f9;
             --bg-gradient: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
             --text-color: #0f172a;
-            --text-muted: #64748b;
             --glass-bg: rgba(255, 255, 255, 0.75);
             --glass-border: rgba(203, 213, 225, 0.6);
             --shadow-raised: 5px 5px 12px rgba(148, 163, 184, 0.35), -4px -4px 10px rgba(255, 255, 255, 0.9);
@@ -169,9 +127,8 @@
             --input-bg: #e2e8f0;
         }
 
-        /* ✨ TRANSICIÓN FLUIDA AL CAMBIAR DE TEMA */
-        body, .glass-panel, .btn-raised, .btn-sunken, header, main, section, input, select, textarea {
-            transition: background 0.4s ease, background-color 0.4s ease, color 0.4s ease, border-color 0.4s ease, box-shadow 0.4s ease;
+        body, .glass-panel, .btn-raised, .btn-sunken, header, main, section {
+            transition: background 0.4s ease, color 0.4s ease, border-color 0.4s ease, box-shadow 0.4s ease;
         }
 
         body {
@@ -226,7 +183,7 @@
         </div>
 
         <div class="flex items-center gap-2">
-            <button id="btn-edit-mode" onclick="toggleModoEdicion()" class="solo-gerente hidden w-9 h-9 md:w-11 md:h-11 btn-sunken flex items-center justify-center text-base md:text-lg text-amber-500" title="Modo Gerente">✏️</button>
+            <button id="btn-edit-mode" onclick="toggleModoGerente()" class="solo-gerente hidden w-9 h-9 md:w-11 md:h-11 btn-sunken flex items-center justify-center text-base md:text-lg text-amber-500 active:scale-90" title="Modo Gerente">✏️</button>
             <button onclick="toggleTema()" id="btn-theme" class="w-9 h-9 md:w-11 md:h-11 btn-sunken flex items-center justify-center text-base md:text-lg">🌙</button>
             <button onclick="cerrarSesion()" class="w-9 h-9 md:w-11 md:h-11 btn-sunken flex items-center justify-center text-base md:text-lg text-rose-500">✕</button>
         </div>
@@ -239,7 +196,7 @@
         <section class="glass-panel w-full md:w-5/12 h-1/2 md:h-full flex flex-col p-3 md:p-5 gap-2 shrink-0">
             <div class="flex justify-between items-center border-b border-black/10 dark:border-white/10 pb-2">
                 <h2 class="text-base md:text-xl font-black">Info Orden</h2>
-                <span class="text-[10px] text-slate-400">Doble clic para nota</span>
+                <span class="text-[10px] text-slate-400">Doble clic para notas/cambio</span>
             </div>
 
             <div id="ticket-items" class="flex-1 overflow-y-auto space-y-2 pr-1"></div>
@@ -251,11 +208,11 @@
                 </div>
                 
                 <div class="grid grid-cols-3 gap-1.5 text-[10px] md:text-xs">
-                    <button class="btn-raised py-2 font-bold uppercase">Domicilio</button>
-                    <button class="btn-raised py-2 font-bold uppercase">Llevar</button>
-                    <button class="btn-raised py-2 font-bold uppercase">Comedor</button>
-                    <button class="btn-raised py-2 font-bold uppercase text-sky-500">Enviar</button>
-                    <button class="btn-raised py-2 font-bold uppercase text-emerald-500">Pago</button>
+                    <button onclick="verOrdenesPorTipo('domicilio')" class="btn-raised py-2 font-bold uppercase">Domicilio</button>
+                    <button onclick="verOrdenesPorTipo('llevar')" class="btn-raised py-2 font-bold uppercase">Llevar</button>
+                    <button onclick="verOrdenesPorTipo('comedor')" class="btn-raised py-2 font-bold uppercase">Comedor</button>
+                    <button onclick="procesarEnvio()" class="btn-raised py-2 font-bold uppercase text-sky-500">Enviar</button>
+                    <button onclick="cobrarOrdenDirecta()" class="btn-raised py-2 font-bold uppercase text-emerald-500">Pago</button>
                     <button onclick="abrirModalMas()" class="btn-raised py-2 text-base font-bold text-amber-500 bg-amber-500/10">+</button>
                 </div>
             </div>
@@ -265,7 +222,6 @@
         <section class="glass-panel w-full md:w-7/12 h-1/2 md:h-full flex flex-col p-3 md:p-5 gap-3 overflow-hidden">
             <div class="flex items-center gap-2 overflow-x-auto pb-1 shrink-0" id="categories-bar">
                 <button onclick="filtrarCategoria('Todos')" class="btn-raised px-4 py-2 text-xs md:text-sm font-bold whitespace-nowrap">Todos</button>
-                <button id="btn-add-category" onclick="guardarCategoriaServer()" class="solo-gerente hidden btn-sunken px-3 py-1.5 text-amber-500 font-bold text-xs shrink-0">+ Categoría</button>
             </div>
 
             <div class="flex-1 overflow-y-auto pr-1">
@@ -274,7 +230,7 @@
         </section>
     </main>
 
-    <!-- MODAL MENU (+ MÁS) -->
+    <!-- MODAL OPCIONES POS (+) -->
     <div id="modal-menu-mas" class="hidden fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center z-50 p-4">
         <div class="glass-panel w-full max-w-sm p-5 space-y-3">
             <div class="flex justify-between items-center border-b border-black/10 dark:border-white/10 pb-2">
@@ -283,14 +239,14 @@
             </div>
             
             <div class="space-y-2 text-xs font-bold">
-                <button class="btn-raised w-full p-3 text-left">📜 Todas las Órdenes del Día</button>
-                <button class="btn-raised w-full p-3 text-left">🛵 Pedidos Repas & Puente</button>
-                <button class="btn-raised w-full p-3 text-left text-emerald-500">💵 Realizar Corte de Caja</button>
+                <button onclick="alert('Cargando resumen de órdenes...')" class="btn-raised w-full p-3 text-left">📜 Todas las Órdenes del Día</button>
+                <button onclick="alert('Abriendo sección Repas...')" class="btn-raised w-full p-3 text-left">🛵 Pedidos Repas & Puente</button>
+                <button onclick="alert('Generando Corte...')" class="btn-raised w-full p-3 text-left text-emerald-500">💵 Realizar Corte General</button>
 
                 <div id="seccion-modal-gerente" class="solo-gerente hidden border-t border-black/10 dark:border-white/10 pt-2 space-y-2">
                     <p class="text-[10px] text-amber-500 uppercase tracking-widest font-black">Admin Gerente</p>
-                    <button class="btn-raised w-full p-3 text-left text-amber-500">👥 Gestión de Empleados</button>
-                    <button class="btn-raised w-full p-3 text-left text-amber-500">🍳 Configuración de Cocinas</button>
+                    <button onclick="alert('Gestión de Empleados')" class="btn-raised w-full p-3 text-left text-amber-500">👥 Gestión de Empleados</button>
+                    <button onclick="alert('Configuración de Cocinas')" class="btn-raised w-full p-3 text-left text-amber-500">🍳 Configuración de Cocinas</button>
                 </div>
             </div>
         </div>
@@ -301,10 +257,14 @@
         <div class="glass-panel w-full max-w-md p-5 space-y-3">
             <h3 class="text-lg font-black text-amber-500 border-b border-black/10 dark:border-white/10 pb-2">➕ Nuevo Platillo</h3>
             <form id="form-nuevo-producto" class="space-y-2 text-xs md:text-sm">
-                <input type="text" id="prod-nombre" required class="btn-sunken w-full px-3 py-2 outline-none" placeholder="Nombre">
+                <input type="text" id="prod-nombre" required class="btn-sunken w-full px-3 py-2 outline-none" placeholder="Nombre del Platillo">
                 <div class="grid grid-cols-2 gap-2">
                     <input type="number" id="prod-precio" step="0.01" required class="btn-sunken w-full px-3 py-2 outline-none" placeholder="Precio ($ MXN)">
-                    <select id="prod-categoria" class="btn-sunken w-full px-3 py-2 outline-none"></select>
+                    <select id="prod-categoria" class="btn-sunken w-full px-3 py-2 outline-none bg-slate-900"></select>
+                </div>
+                <div class="grid grid-cols-1 gap-2">
+                    <label class="text-[10px] text-slate-400 font-bold">Enviar comanda a:</label>
+                    <select id="prod-cocina" class="btn-sunken w-full px-3 py-2 outline-none bg-slate-900"></select>
                 </div>
                 <input type="url" id="prod-foto" required class="btn-sunken w-full px-3 py-2 outline-none" placeholder="URL Foto Imagen">
                 <textarea id="prod-ingredientes" rows="2" class="btn-sunken w-full p-2 outline-none" placeholder="Ingredientes..."></textarea>
@@ -317,12 +277,31 @@
         </div>
     </div>
 
-    <!-- SCRIPT TICKET, NOTAS Y FEEDBACK TÁCTIL -->
+    <!-- MODAL INTERCAMBIO DE PRODUCTO O NOTA -->
+    <div id="modal-editar-item" class="hidden fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center z-50 p-4">
+        <div class="glass-panel w-full max-w-sm p-5 space-y-3">
+            <h3 class="text-base font-black text-amber-500 border-b border-white/10 pb-2">Opciones de Ítem</h3>
+            <input type="text" id="input-nota-item" class="btn-sunken w-full p-2 text-xs outline-none" placeholder="Nota para cocina...">
+            
+            <div>
+                <p class="text-[10px] text-amber-400 font-bold uppercase mb-1">🔄 Cambiar por precio equivalente ($<span id="label-precio-cambio">0</span>):</p>
+                <div id="lista-cambios-mismo-precio" class="max-h-36 overflow-y-auto space-y-1 pr-1"></div>
+            </div>
+
+            <div class="flex gap-2 pt-2">
+                <button onclick="cerrarModalEditarItem()" class="btn-raised w-1/2 py-2 text-xs font-bold">Cancelar</button>
+                <button onclick="guardarNotaModal()" class="btn-raised w-1/2 py-2 text-xs font-bold text-emerald-400">Guardar Nota</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- SCRIPT POS LOGIC Y SEGURIDAD -->
     <script>
         let ticketArray = [];
         let esModoClaro = false;
+        let modoEdicionActivo = false;
+        let itemSeleccionadoId = null;
 
-        // FEEDBACK TÁCTIL EN PANTALLAS TÁCTILES
         document.addEventListener('click', (e) => {
             if (e.target.closest('button, .btn-raised, .btn-sunken')) {
                 if (navigator.vibrate) navigator.vibrate(15);
@@ -335,54 +314,56 @@
             document.getElementById("btn-theme").innerText = esModoClaro ? "☀️" : "🌙";
         }
 
-        function toggleModoEdicion() { abrirModalProducto(); }
-
-        function agregarAlTicket(nombre, precio) {
-            const item = { id: Date.now(), nombre, precio, nota: "" };
-            ticketArray.push(item);
-            renderizarTicket();
+        function toggleModoGerente() {
+            if (!window.esGerente) return;
+            modoEdicionActivo = !modoEdicionActivo;
+            document.getElementById("btn-edit-mode").classList.toggle("bg-amber-500/30", modoEdicionActivo);
+            renderizarProductos(window.menuCompleto);
         }
 
-        function eliminarDelTicket(id) {
-            ticketArray = ticketArray.filter(i => i.id !== id);
-            renderizarTicket();
-        }
+        function renderizarProductos(productos) {
+            const grid = document.getElementById("products-grid");
+            grid.innerHTML = "";
 
-        function agregarNotaItem(id) {
-            const item = ticketArray.find(i => i.id === id);
-            if (item) {
-                const nota = prompt(`Nota de cocina para ${item.nombre}:`, item.nota);
-                if (nota !== null) {
-                    item.nota = nota;
-                    renderizarTicket();
-                }
+            if (!productos || Object.keys(productos).length === 0) {
+                grid.innerHTML = `<div class="col-span-full text-center py-12 text-slate-400 font-medium text-sm">No hay productos en esta categoría.</div>`;
+            } else {
+                Object.keys(productos).forEach(id => {
+                    const item = productos[id];
+                    grid.innerHTML += `
+                        <div onclick="agregarAlTicket('${item.nombre}', ${item.precio})" class="btn-raised p-3 flex flex-col justify-between h-32 md:h-40 cursor-pointer relative overflow-hidden group active:scale-95 transition-transform">
+                            <img src="${item.foto}" class="absolute inset-0 w-full h-full object-cover opacity-20 group-hover:opacity-40 transition-opacity" />
+                            <span class="text-[10px] md:text-xs font-bold uppercase tracking-wider text-amber-500 z-10">${item.categoria}</span>
+                            <div class="z-10">
+                                <p class="font-bold text-sm md:text-base leading-tight">${item.nombre}</p>
+                                <p class="text-base md:text-lg font-black text-emerald-500 mt-1">$${item.precio} MXN</p>
+                            </div>
+                        </div>
+                    `;
+                });
+            }
+
+            // Muestra botón "+" de añadir si el Lápiz de gerente está encendido
+            if (window.esGerente && modoEdicionActivo) {
+                grid.innerHTML += `
+                    <div onclick="abrirModalProducto()" class="btn-raised p-3 flex flex-col items-center justify-center h-32 md:h-40 cursor-pointer text-amber-500 border-dashed border-2 border-amber-500/50 bg-amber-500/10 active:scale-95">
+                        <span class="text-3xl font-black">+</span>
+                        <span class="text-xs font-bold uppercase mt-1">Nuevo Platillo</span>
+                    </div>
+                `;
             }
         }
 
-        function renderizarTicket() {
-            const ticketContainer = document.getElementById("ticket-items");
-            ticketContainer.innerHTML = "";
-            let total = 0;
-
-            ticketArray.forEach(item => {
-                total += item.precio;
-                ticketContainer.innerHTML += `
-                    <div ondblclick="agregarNotaItem(${item.id})" class="flex flex-col btn-sunken p-2 text-xs relative group cursor-pointer active:scale-98">
-                        <div class="flex justify-between items-center">
-                            <span class="font-bold truncate max-w-[140px]">${item.nombre}</span>
-                            <div class="flex items-center gap-2">
-                                <span class="font-black text-amber-500">$${item.precio}</span>
-                                <button onclick="eliminarDelTicket(${item.id})" class="text-rose-500 font-bold hover:scale-125 transition-transform px-1">✕</button>
-                            </div>
-                        </div>
-                        ${item.nota ? `<span class="text-[10px] text-sky-500 italic font-semibold mt-0.5">📝 ${item.nota}</span>` : ''}
-                    </div>
-                `;
-            });
-
-            document.getElementById("total-mxn").innerText = `$${total.toFixed(2)}`;
+        function filtrarCategoria(nombreCat) {
+            if (nombreCat === 'Todos') {
+                renderizarProductos(window.menuCompleto);
+            } else {
+                const filtrados = {};
+                Object.keys(window.menuCompleto).forEach(key => {
+                    if (window.menuCompleto[key].categoria === nombreCat) filtrados[key] = window.menuCompleto[key];
+                });
+                renderizarProductos(filtrados);
+            }
         }
 
-        function abrirModalProducto() { document.getElementById("modal-agregar-producto").classList.remove("hidden"); }
-        function cerrarModalProducto() { document.getElementById("modal-agregar-producto").classList.add("hidden"); }
-        function abrirModalMas() { document.getElementById("modal-menu-mas").classLis
+        function agregarAlTicket(nombre, pre
