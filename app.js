@@ -22,9 +22,6 @@ let currentBusinessData = {
 let html5QrcodeScanner = null;
 let inputPin = "";
 
-// ==========================================
-// 1. ESCÁNER QR DE ACCESO / GERENTE
-// ==========================================
 function abrirEscaner() {
     document.getElementById('welcome-screen').classList.add('hidden');
     document.getElementById('scanner-screen').classList.remove('hidden');
@@ -49,9 +46,7 @@ function abrirEscaner() {
         html5QrcodeScanner.render((tokenLeido) => {
             if(html5QrcodeScanner) html5QrcodeScanner.clear();
             procesarTokenAcceso(tokenLeido);
-        }, (error) => {
-            // Silenciamos los errores de lectura frame a frame
-        });
+        }, (error) => {});
     }
 }
 
@@ -72,7 +67,6 @@ function procesarTokenAcceso(rawToken) {
         cleanToken = parts[parts.length - 1] || parts[parts.length - 2];
     }
 
-    // SI ES UN QR DIRECTO DE GERENTE
     if (cleanToken.startsWith("QR_GERENTE_")) {
         autenticarGerentePorQR(cleanToken);
         return;
@@ -112,9 +106,6 @@ function procesarTokenAcceso(rawToken) {
         });
 }
 
-// ==========================================
-// 2. LÓGICA DE GERENTE POR QR DIRECTO
-// ==========================================
 function autenticarGerentePorQR(qrCode) {
     fetch(`${FIREBASE_URL}/businesses.json`)
         .then(res => res.json())
@@ -142,9 +133,6 @@ function autenticarGerentePorQR(qrCode) {
         });
 }
 
-// ==========================================
-// 3. RELOJ Y TECLADO PIN
-// ==========================================
 function iniciarReloj() {
     setInterval(() => {
         const now = new Date();
@@ -180,7 +168,6 @@ function actionExitOrClear() {
     }
 }
 
-// ÚNICO CAMBIO: LEER EL ROL, NOMBRE Y ÁREA DEL EMPLEADO DESDE EL JSON DINÁMICO
 function submitPin() {
     if (currentBusinessData.pins && currentBusinessData.pins[inputPin]) {
         const rol = currentBusinessData.pins[inputPin];
@@ -226,9 +213,6 @@ function cambiarFondoLockscreen() {
     document.getElementById('lockscreen').style.backgroundImage = `url('${fondos[fondoIndex]}')`;
 }
 
-// ==========================================
-// 4. SEGURIDAD: CONTROL DE SESIÓN ÚNICA Y PUENTE
-// ==========================================
 function iniciarSesionUnica(businessToken, userRole, userName, areaTrabajo = "general") {
     const newSessionId = "SESS_" + Date.now() + "_" + Math.random().toString(36).substr(2, 5);
 
@@ -237,7 +221,6 @@ function iniciarSesionUnica(businessToken, userRole, userName, areaTrabajo = "ge
         body: JSON.stringify(newSessionId)
     })
     .then(() => {
-        // Guardar sesión localmente
         localStorage.setItem('foodos_session_token', newSessionId);
         localStorage.setItem('foodos_business_token', businessToken);
         localStorage.setItem('foodos_business_data', JSON.stringify(currentBusinessData));
@@ -245,10 +228,8 @@ function iniciarSesionUnica(businessToken, userRole, userName, areaTrabajo = "ge
         localStorage.setItem('foodos_user_name', userName);
         localStorage.setItem('foodos_area', areaTrabajo);
 
-        // Iniciar vigilancia remota
         escucharCierreDeSesionRemoto(businessToken, newSessionId);
 
-        // Redirección según el rol
         if (userRole === 'caja' || userRole === 'admin' || userRole === 'gerente') {
             window.location.href = 'caja.html';
         } else if (userRole === 'cocina' || userRole === 'cocinero' || userRole === 'pizzero') {
@@ -275,5 +256,5 @@ function escucharCierreDeSesionRemoto(businessToken, mySessionId) {
                     window.location.href = 'index.html';
                 }
             });
-    }, 5000); // Revisa la validez cada 5 segundos
+    }, 5000);
 }
