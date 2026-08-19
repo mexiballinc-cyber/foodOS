@@ -23,6 +23,7 @@
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
 
+        // 🛡️ SESIÓN Y RECONOCIMIENTO DE ROL DINÁMICO
         const currentSucursal = localStorage.getItem("foodos_business_token") || localStorage.getItem("foodos_sucursal") || "cubito_sushi";
         const usuarioActivo = localStorage.getItem("foodos_user_name") || localStorage.getItem("foodos_usuario") || "Cajero General"; 
         const rawRole = (localStorage.getItem("foodos_role") || "").toLowerCase();
@@ -40,6 +41,29 @@
 
         // Tasa de cambio por defecto
         window.tipoCambioUSD = 18.00;
+
+        // 🏬 INICIALIZACIÓN DE INTERFAZ (NOMBRE NEGOCIO, CAJERO Y ROL DE GERENTE)
+        document.addEventListener("DOMContentLoaded", () => {
+            // Cargar Nombre de la Sucursal/Local desde Firebase
+            onValue(ref(db, `${refSecurity}/config/nombreLocal`), (snapshot) => {
+                const nombreReal = snapshot.val();
+                const elemNombre = document.getElementById("nombre-sucursal");
+                if (elemNombre) {
+                    elemNombre.innerText = (nombreReal || currentSucursal.replace(/_/g, " ")).toUpperCase();
+                }
+            });
+
+            // Setear Cajero y Rol
+            const elemCajero = document.getElementById("nombre-cajero");
+            if (elemCajero) {
+                elemCajero.innerText = `${usuarioActivo} (${rawRole || 'caja'})`;
+            }
+
+            // Si es Gerente, mostrar los botones y elementos especiales
+            if (esGerente) {
+                document.querySelectorAll(".solo-gerente").forEach(el => el.classList.remove("hidden"));
+            }
+        });
 
         // LEER CATEGORÍAS (security_code)
         onValue(ref(db, `${refSecurity}/categorias`), (snapshot) => {
@@ -70,7 +94,7 @@
             window.ordenesServidor = snapshot.val() || {};
         });
 
-        // CREAR PLATILLO
+        // CREAR / EDITAR PLATILLO
         document.getElementById("form-nuevo-producto")?.addEventListener("submit", (e) => {
             e.preventDefault();
             const id = document.getElementById("prod-id").value;
@@ -87,7 +111,7 @@
             set(targetRef, nuevoPlatillo).then(() => {
                 document.getElementById("form-nuevo-producto").reset();
                 document.getElementById("prod-id").value = "";
-                cerrarModalProducto(); // 🔥 Cierra inmediatamente como pediste
+                cerrarModalProducto();
             });
         });
 
@@ -175,7 +199,8 @@
             animation: iphoneShake 0.25s infinite linear;
         }
     </style>
-</head><body class="p-2 md:p-4 flex flex-col gap-3 h-screen overflow-hidden">
+</head>
+<body class="p-2 md:p-4 flex flex-col gap-3 h-screen overflow-hidden">
 
     <!-- HEADER -->
     <header class="glass-panel h-14 md:h-16 px-4 md:px-6 flex justify-between items-center shrink-0">
