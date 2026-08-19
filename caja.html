@@ -76,10 +76,12 @@
         onValue(ref(db, `${sucursalRef}/cocinas`), (snapshot) => {
             const data = snapshot.val() || {};
             const selectCocina = document.getElementById("prod-cocina");
-            selectCocina.innerHTML = '<option value="general">Cocina Principal</option>';
-            Object.keys(data).forEach(k => {
-                selectCocina.innerHTML += `<option value="${k}">${data[k].nombre}</option>`;
-            });
+            if(selectCocina) {
+                selectCocina.innerHTML = '<option value="general">Cocina Principal</option>';
+                Object.keys(data).forEach(k => {
+                    selectCocina.innerHTML += `<option value="${k}">${data[k].nombre}</option>`;
+                });
+            }
         });
 
         // ✏️ AÑADIR PLATILLO (Gerente)
@@ -228,9 +230,7 @@
                 <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 md:gap-3" id="products-grid"></div>
             </div>
         </section>
-    </main>
-
-    <!-- MODAL OPCIONES POS (+) -->
+    </main><!-- MODAL OPCIONES POS (+) -->
     <div id="modal-menu-mas" class="hidden fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center z-50 p-4">
         <div class="glass-panel w-full max-w-sm p-5 space-y-3">
             <div class="flex justify-between items-center border-b border-black/10 dark:border-white/10 pb-2">
@@ -343,7 +343,6 @@
                 });
             }
 
-            // Muestra botón "+" de añadir si el Lápiz de gerente está encendido
             if (window.esGerente && modoEdicionActivo) {
                 grid.innerHTML += `
                     <div onclick="abrirModalProducto()" class="btn-raised p-3 flex flex-col items-center justify-center h-32 md:h-40 cursor-pointer text-amber-500 border-dashed border-2 border-amber-500/50 bg-amber-500/10 active:scale-95">
@@ -366,4 +365,128 @@
             }
         }
 
-        function agregarAlTicket(nombre, pre
+        function agregarAlTicket(nombre, precio) {
+            ticketArray.push({ id: Date.now(), nombre, precio, nota: "" });
+            renderizarTicket();
+        }
+
+        function eliminarDelTicket(id) {
+            const pin = prompt("🔒 AUTORIZACIÓN GERENTE: Ingresa tu código PIN para cancelar el producto:");
+            if (pin === "1234" || window.esGerente) {
+                ticketArray = ticketArray.filter(i => i.id !== id);
+                renderizarTicket();
+            } else {
+                alert("❌ PIN Incorrecto. No se puede cancelar el producto sin autorización.");
+            }
+        }
+
+        function abrirEditarItem(id) {
+            itemSeleccionadoId = id;
+            const item = ticketArray.find(i => i.id === id);
+            if (!item) return;
+
+            document.getElementById("input-nota-item").value = item.nota || "";
+            document.getElementById("label-precio-cambio").innerText = item.precio;
+
+            const contenedorCambios = document.getElementById("lista-cambios-mismo-precio");
+            contenedorCambios.innerHTML = "";
+
+            Object.keys(window.menuCompleto).forEach(k => {
+                const p = window.menuCompleto[k];
+                if (p.precio === item.precio && p.nombre !== item.nombre) {
+                    contenedorCambios.innerHTML += `
+                        <button onclick="sustituirProducto(${id}, '${p.nombre}')" class="btn-sunken w-full p-2 text-left text-xs flex justify-between items-center text-amber-400">
+                            <span>${p.nombre}</span>
+                            <span class="text-[10px] bg-amber-500/20 px-1.5 py-0.5 rounded">Cambiar 🔄</span>
+                        </button>
+                    `;
+                }
+            });
+
+            if (contenedorCambios.innerHTML === "") {
+                contenedorCambios.innerHTML = `<p class="text-[10px] text-slate-500 italic">No hay otros productos de $${item.precio} MXN.</p>`;
+            }
+
+            document.getElementById("modal-editar-item").classList.remove("hidden");
+        }
+
+        function sustituirProducto(id, nuevoNombre) {
+            const item = ticketArray.find(i => i.id === id);
+            if (item) {
+                item.nombre = nuevoNombre;
+                renderizarTicket();
+                cerrarModalEditarItem();
+            }
+        }
+
+        function guardarNotaModal() {
+            const item = ticketArray.find(i => i.id === itemSeleccionadoId);
+            if (item) {
+                item.nota = document.getElementById("input-nota-item").value;
+                renderizarTicket();
+            }
+            cerrarModalEditarItem();
+        }
+
+        function cerrarModalEditarItem() {
+            document.getElementById("modal-editar-item").classList.add("hidden");
+        }
+
+        function renderizarTicket() {
+            const ticketContainer = document.getElementById("ticket-items");
+            ticketContainer.innerHTML = "";
+            let total = 0;
+
+            ticketArray.forEach(item => {
+                total += item.precio;
+                ticketContainer.innerHTML += `
+                    <div ondblclick="abrirEditarItem(${item.id})" class="flex flex-col btn-sunken p-2 text-xs relative group cursor-pointer active:scale-98">
+                        <div class="flex justify-between items-center">
+                            <span class="font-bold truncate max-w-[140px]">${item.nombre}</span>
+                            <div class="flex items-center gap-2">
+                                <span class="font-black text-amber-500">$${item.precio}</span>
+                                <button onclick="eliminarDelTicket(${item.id})" class="text-rose-500 font-bold hover:scale-125 px-1">✕</button>
+                            </div>
+                        </div>
+                        ${item.nota ? `<span class="text-[10px] text-sky-500 italic font-semibold mt-0.5">📝 ${item.nota}</span>` : ''}
+                    </div>
+                `;
+            });
+
+            document.getElementById("total-mxn").innerText = `$${total.toFixed(2)}`;
+        }
+
+        function procesarEnvio() {
+            if (ticketArray.length === 0) return alert("Añade productos a la comanda primero.");
+            const tipo = prompt("¿Para dónde es la orden? (Escribe: comedor, llevar o domicilio):", "comedor")?.toLowerCase();
+            if (!["comedor", "llevar", "domicilio"].includes(tipo)) return alert("Tipo inválido.");
+
+            let detalle = "";
+            if (tipo === "comedor" || tipo === "llevar") {
+                detalle = prompt(`Ingrese el nombre de la persona o número de mesa para ${tipo.toUpperCase()}:`);
+                if (!detalle) return;
+            }
+
+            alert(`✅ Orden enviada exitosamente a cocina para: ${tipo.toUpperCase()} (${detalle || 'Domicilio'})`);
+            ticketArray = [];
+            renderizarTicket();
+        }
+
+        function verOrdenesPorTipo(tipo) {
+            alert(`🔍 Consultando órdenes activas en estado: ${tipo.toUpperCase()}`);
+        }
+
+        function cobrarOrdenDirecta() {
+            if(ticketArray.length === 0) return alert("No hay productos en la orden.");
+            alert("💵 Cobro registrado con éxito.");
+            ticketArray = [];
+            renderizarTicket();
+        }
+
+        function abrirModalProducto() { document.getElementById("modal-agregar-producto").classList.remove("hidden"); }
+        function cerrarModalProducto() { document.getElementById("modal-agregar-producto").classList.add("hidden"); }
+        function abrirModalMas() { document.getElementById("modal-menu-mas").classList.remove("hidden"); }
+        function cerrarModalMas() { document.getElementById("modal-menu-mas").classList.add("hidden"); }
+    </script>
+</body>
+</html>
