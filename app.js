@@ -22,6 +22,38 @@ let currentBusinessData = {
 let html5QrcodeScanner = null;
 let inputPin = "";
 
+// DETECTOR DE CONEXIÓN A INTERNET
+window.addEventListener('online', actualizarEstadoRed);
+window.addEventListener('offline', actualizarEstadoRed);
+
+function actualizarEstadoRed() {
+    let badge = document.getElementById('network-status-badge');
+    if (!badge) {
+        badge = document.createElement('div');
+        badge.id = 'network-status-badge';
+        badge.style.cssText = 'position:fixed; bottom:15px; left:15px; z-index:9999; padding:6px 12px; border-radius:20px; font-size:11px; font-weight:bold; backdrop-filter:blur(10px); transition:all 0.3s;';
+        document.body.appendChild(badge);
+    }
+
+    if (navigator.onLine) {
+        badge.style.background = 'rgba(16, 185, 129, 0.2)';
+        badge.style.color = '#10b981';
+        badge.style.border = '1px solid rgba(16, 185, 129, 0.4)';
+        badge.innerText = '🟢 CONECTADO';
+        setTimeout(() => { badge.style.opacity = '0.3'; }, 3000);
+    } else {
+        badge.style.opacity = '1';
+        badge.style.background = 'rgba(239, 68, 68, 0.2)';
+        badge.style.color = '#ef4444';
+        badge.style.border = '1px solid rgba(239, 68, 68, 0.4)';
+        badge.innerText = '🔴 SIN INTERNET';
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    actualizarEstadoRed();
+});
+
 function abrirEscaner() {
     document.getElementById('welcome-screen').classList.add('hidden');
     document.getElementById('scanner-screen').classList.remove('hidden');
@@ -124,7 +156,7 @@ function autenticarGerentePorQR(qrCode) {
             if (negocioData) {
                 currentBusinessToken = negocioEncontradoKey;
                 currentBusinessData = negocioData;
-                alert(`👑 ¡Bienvenido Gerente ${negocioData.gerente.nombre}!\nAcceso directo concedido.`);
+                alert(`👑 ¡Bienvenido Gerente ${negocioData.gerente.nombre}!\nAcceso concedido a Cajas/Panel Admin.`);
                 iniciarSesionUnica(negocioEncontradoKey, "admin", negocioData.gerente.nombre);
             } else {
                 alert("❌ Código QR de Gerente no reconocido.");
@@ -230,6 +262,7 @@ function iniciarSesionUnica(businessToken, userRole, userName, areaTrabajo = "ge
 
         escucharCierreDeSesionRemoto(businessToken, newSessionId);
 
+        // DIRECCIONAMIENTO SEGÚN EL ROL
         if (userRole === 'caja' || userRole === 'admin' || userRole === 'gerente') {
             window.location.href = 'caja.html';
         } else if (userRole === 'cocina' || userRole === 'cocinero' || userRole === 'pizzero') {
