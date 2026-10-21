@@ -67,6 +67,9 @@
         window.db = db;
         window.repaId = repaId;
         window.currentSucursal = currentSucursal;
+        window.todasLasOrdenesMap = {};
+        window.ordenSeleccionadaId = null;
+        window.origenPuenteSucursal = null;
 
         document.addEventListener("DOMContentLoaded", () => {
             document.getElementById("nombre-repartidor").innerText = usuarioActivo;
@@ -105,6 +108,7 @@
             get(ref(db, `${refBase}/puente_repas_activo`)).then(snapshot => {
                 const tokenPuente = snapshot.val();
                 if (tokenPuente) {
+                    window.tokenPuente = tokenPuente;
                     onValue(ref(db, `businesses/${tokenPuente}/informacion_de_corte/ordenes`), (snapPuente) => {
                         window.ordenesPuente = snapPuente.val() || {};
                         procesarYRenderizarOrdenes();
@@ -120,32 +124,56 @@
             containerDisponibles.innerHTML = "";
             containerMisPedidos.innerHTML = "";
 
-            const todasLasOrdenes = { ...(window.ordenesLocales || {}), ...(window.ordenesPuente || {}) };
+            const ordenesLocales = window.ordenesLocales || {};
+            const ordenesPuente = window.ordenesPuente || {};
+
+            // Mapeo unificado para saber el origen de cada orden
+            window.todasLasOrdenesMap = {};
+            Object.keys(ordenesLocales).forEach(k => {
+                window.todasLasOrdenesMap[k] = { ...ordenesLocales[k], esPuente: false };
+            });
+            Object.keys(ordenesPuente).forEach(k => {
+                window.todasLasOrdenesMap[k] = { ...ordenesPuente[k], esPuente: true, sucursalOrigen: window.tokenPuente };
+            });
+
             let dispCount = 0;
             let misCount = 0;
 
-            Object.keys(todasLasOrdenes).forEach(id => {
-                const ord = todasLasOrdenes[id];
-                if (ord.tipo === "domicilio" && ord.estado !== "cancelada") {
+            Object.keys(window.todasLasOrdenesMap).forEach(id => {
+                const ord = window.todasLasOrdenesMap[id];
 
-                    // Disponibles
-                    if (!ord.repartidorId && ord.estado === "activa") {
+                if (ord.tipo === "domicilio" && ord.estado !== "cancelada") {
+                    const badgeCocina = ord.estado === "lista" 
+                        ? `<span class="bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded text-[9px] font-black">🟢 LISTA EN COCINA</span>`
+                        : `<span class="bg-amber-500/20 text-amber-500 px-2 py-0.5 rounded text-[9px] font-black">🍳 PREPARANDO</span>`;
+
+                    const badgePuente = ord.esPuente 
+                        ? `<span class="bg-sky-500/20 text-sky-400 px-2 py-0.5 rounded text-[9px] font-black">🌉 PUENTE</span>`
+                        : '';
+
+                    // DISPONIBLES: Si no tiene repartidor y la orden está "activa" o "lista"
+                    if (!ord.repartidorId && (ord.estado === "activa" || ord.estado === "lista")) {
                         dispCount++;
                         containerDisponibles.innerHTML += `
-                            <div class="btn-raised p-4 space-y-2 relative overflow-hidden">
+                            <div onclick="abrirDetalleOrden('${id}')" class="btn-raised p-4 space-y-2 relative overflow-hidden cursor-pointer hover:border-amber-500/50 transition-colors">
                                 <div class="flex justify-between items-center border-b border-white/10 pb-2">
-                                    <span class="text-xs font-black text-amber-500">📍 ${ord.detalle}</span>
+                                    <div class="flex items-center gap-1.5 truncate max-w-[70%]">
+                                        <span class="text-xs font-black text-amber-500 truncate">📍 ${ord.detalle}</span>
+                                    </div>
                                     <span class="text-[10px] text-slate-400 font-bold">${ord.fecha}</span>
                                 </div>
-                                <p class="text-xs opacity-80">${ord.items.length} Platillos • Total: $${ord.total} MXN</p>
-                                <button onclick="tomarPedidoConCandado('${id}')" class="btn-raised w-full py-2.5 text-xs font-black text-emerald-400 uppercase bg-emerald-500/10">
-                                    🚴 Aceptar Pedido
+                                <div class="flex justify-between items-center">
+                                    <p class="text-xs opacity-80">${(ord.items || []).length} Platillos • Total: $${ord.total} MXN</p>
+                                    <div class="flex gap-1">${badgePuente}${badgeCocina}</div>
+                                </div>
+                                <button onclick="event.stopPropagation(); abrirDetalleOrden('${id}')" class="btn-raised w-full py-2 text-xs font-black text-amber-500 uppercase bg-amber-500/10 hover:bg-amber-500/20">
+                                    👁️ Ver Detalle y Aceptar
                                 </button>
                             </div>
                         `;
                     }
 
-                    // Mis Pedidos
+                    // MIS PEDIDOS: Asignados al repartidor activo
                     if (ord.repartidorId === repaId) {
                         misCount++;
                         const esEntregado = ord.estadoRepa === "entregado";
@@ -154,15 +182,16 @@
                             : `<span class="text-amber-500 font-bold">🟡 EN RUTA</span>`;
 
                         containerMisPedidos.innerHTML += `
-                            <div class="btn-sunken p-4 space-y-2">
+                            <div onclick="abrirDetalleOrden('${id}')" class="btn-sunken p-4 space-y-2 cursor-pointer hover:border-amber-500/30">
                                 <div class="flex justify-between items-center border-b border-white/10 pb-2">
-                                    <span class="text-xs font-black text-amber-500">📍 ${ord.detalle}</span>
+                                    <span class="text-xs font-black text-amber-500 truncate max-w-[65%]">📍 ${ord.detalle}</span>
                                     ${badgeEstado}
                                 </div>
-                                <div class="flex gap-2 pt-1">
+                                <p class="text-xs opacity-80">${(ord.items || []).length} Platillos • Total: $${ord.total} MXN</p>
+                                <div class="flex gap-2 pt-1" onclick="event.stopPropagation()">
                                     ${!esEntregado ? `
-                                        <button onclick="marcarComoEntregado('${id}')" class="btn-raised flex-1 py-2 text-xs font-black text-emerald-400 uppercase">
-                                            ✓ Marcado como Entregado
+                                        <button onclick="marcarComoEntregado('${id}')" class="btn-raised flex-1 py-2 text-xs font-black text-emerald-400 uppercase bg-emerald-500/10">
+                                            ✓ Marcar como Entregado
                                         </button>
                                     ` : '<p class="text-[10px] text-slate-400 font-bold w-full text-center">Pendiente de cobro/liquidación en Caja.</p>'}
                                 </div>
@@ -176,8 +205,58 @@
             if (misCount === 0) containerMisPedidos.innerHTML = `<p class="text-xs text-slate-400 text-center py-8">No has tomado ningún pedido en este turno.</p>`;
         }
 
-        window.tomarPedidoConCandado = function(ordenId) {
-            const ordenRef = ref(db, `${refBase}/informacion_de_corte/ordenes/${ordenId}`);
+        window.abrirDetalleOrden = function(id) {
+            const ord = window.todasLasOrdenesMap[id];
+            if (!ord) return;
+
+            window.ordenSeleccionadaId = id;
+            window.origenPuenteSucursal = ord.esPuente ? ord.sucursalOrigen : null;
+
+            document.getElementById("modal-titulo-detalle").innerText = `📍 ${ord.detalle}`;
+            document.getElementById("modal-fecha-orden").innerText = `Hora: ${ord.fecha}`;
+            document.getElementById("modal-total-orden").innerText = `$${ord.total.toFixed(2)} MXN`;
+
+            let itemsHTML = "";
+            (ord.items || []).forEach(item => {
+                const notaTexto = item.nota ? `<span class="block text-[10px] text-amber-400 italic">✏️ ${item.nota}</span>` : '';
+                itemsHTML += `
+                    <div class="btn-sunken p-2 text-xs flex justify-between items-center my-1">
+                        <div>
+                            <p class="font-bold">${item.nombre}</p>
+                            ${notaTexto}
+                        </div>
+                        <span class="font-black text-amber-500">$${item.precio}</span>
+                    </div>
+                `;
+            });
+            document.getElementById("modal-lista-platillos").innerHTML = itemsHTML;
+
+            // Botón Aceptar visible solo si no la tiene nadie asignado
+            const btnAceptar = document.getElementById("btn-aceptar-modal");
+            if (!ord.repartidorId) {
+                btnAceptar.classList.remove("hidden");
+            } else {
+                btnAceptar.classList.add("hidden");
+            }
+
+            document.getElementById("modal-detalle-pedido").classList.remove("hidden");
+        };
+
+        window.cerrarModalDetalle = function() {
+            document.getElementById("modal-detalle-pedido").classList.add("hidden");
+            window.ordenSeleccionadaId = null;
+            window.origenPuenteSucursal = null;
+        };
+
+        window.aceptarPedidoDesdeModal = function() {
+            if (!window.ordenSeleccionadaId) return;
+            tomarPedidoConCandado(window.ordenSeleccionadaId, window.origenPuenteSucursal);
+            cerrarModalDetalle();
+        };
+
+        window.tomarPedidoConCandado = function(ordenId, tokenPuente = null) {
+            const targetBase = tokenPuente ? `businesses/${tokenPuente}` : refBase;
+            const ordenRef = ref(db, `${targetBase}/informacion_de_corte/ordenes/${ordenId}`);
 
             runTransaction(ordenRef, (orden) => {
                 if (orden) {
@@ -198,7 +277,10 @@
         };
 
         window.marcarComoEntregado = function(ordenId) {
-            update(ref(db, `${refBase}/informacion_de_corte/ordenes/${ordenId}`), {
+            const ord = window.todasLasOrdenesMap[ordenId];
+            const targetBase = (ord && ord.esPuente) ? `businesses/${ord.sucursalOrigen}` : refBase;
+
+            update(ref(db, `${targetBase}/informacion_de_corte/ordenes/${ordenId}`), {
                 estadoRepa: "entregado",
                 horaEntrega: new Date().toLocaleTimeString()
             }).then(() => {
@@ -217,6 +299,7 @@
 </head>
 <body class="p-3 md:p-6 flex flex-col gap-4 h-screen overflow-hidden">
 
+    <!-- HEADER -->
     <header class="glass-panel h-16 px-4 flex justify-between items-center shrink-0">
         <div class="flex items-center gap-3">
             <span class="text-2xl">🛵</span>
@@ -228,6 +311,7 @@
         <button onclick="cerrarSesion()" class="w-10 h-10 btn-sunken flex items-center justify-center text-rose-500 font-bold">✕</button>
     </header>
 
+    <!-- PANEL PRINCIPAL -->
     <main class="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4 overflow-hidden">
         <section class="glass-panel p-4 flex flex-col gap-3 overflow-hidden">
             <h2 class="text-xs font-black uppercase text-sky-400 border-b border-white/10 pb-2">📦 Pedidos Disponibles</h2>
@@ -240,6 +324,32 @@
         </section>
     </main>
 
-    <script src="app.js"></script>
+    <!-- MODAL DETALLE Y ACEPTAR ORDEN -->
+    <div id="modal-detalle-pedido" class="hidden fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
+        <div class="glass-panel w-full max-w-sm p-5 space-y-4">
+            <div class="flex justify-between items-center border-b border-white/10 pb-2">
+                <h3 class="text-sm font-black text-amber-500 truncate max-w-[200px]" id="modal-titulo-detalle">📍 Info Orden</h3>
+                <button onclick="cerrarModalDetalle()" class="btn-sunken w-7 h-7 text-xs">✕</button>
+            </div>
+
+            <div class="flex justify-between items-center text-xs text-slate-300">
+                <span id="modal-fecha-orden" class="font-bold">Hora: --:--</span>
+                <span id="modal-total-orden" class="text-lg font-black text-emerald-400">$0.00 MXN</span>
+            </div>
+
+            <div class="space-y-1">
+                <p class="text-[10px] font-bold text-slate-400 uppercase">Detalle del Pedido:</p>
+                <div id="modal-lista-platillos" class="max-h-48 overflow-y-auto pr-1 space-y-1"></div>
+            </div>
+
+            <div class="flex gap-2 pt-2">
+                <button onclick="cerrarModalDetalle()" class="btn-raised w-1/3 py-2.5 text-xs font-bold text-rose-500">Cerrar</button>
+                <button id="btn-aceptar-modal" onclick="aceptarPedidoDesdeModal()" class="btn-raised w-2/3 py-2.5 text-xs font-black text-emerald-400 uppercase bg-emerald-500/20">
+                    🚴 Aceptar Pedido
+                </button>
+            </div>
+        </div>
+    </div>
+
 </body>
 </html>
