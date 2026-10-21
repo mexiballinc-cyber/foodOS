@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Food OS - Repartidores</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        :root {
+            --bg-gradient: linear-gradient(135deg, #0f172a 0%, #1e2640 100%);
+            --text-color: #f8fafc;
+            --glass-bg: rgba(255, 255, 255, 0.05);
+            --glass-border: rgba(255, 255, 255, 0.12);
+            --shadow-raised: 6px 6px 12px rgba(0, 0, 0, 0.4), -3px -3px 8px rgba(255, 255, 255, 0.05);
+            --shadow-sunken: inset 3px 3px 6px rgba(0, 0, 0, 0.5), inset -2px -2px 4px rgba(255, 255, 255, 0.05);
+        }
+        body {
+            background: var(--bg-gradient);
+            color: var(--text-color);
+            font-family: system-ui, -apple-system, sans-serif;
+            min-height: 100vh;
+            user-select: none;
+        }
+        .glass-panel {
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: 20px;
+        }
+        .btn-raised {
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            box-shadow: var(--shadow-raised);
+            color: var(--text-color);
+        }
+        .btn-sunken {
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            box-shadow: var(--shadow-sunken);
+            color: var(--text-color);
+        }
+    </style>
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getDatabase, ref, onValue, update, runTransaction, get } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyDD5YehD45blgPdbDCUEcwSnqBjdA_eZlE",
+            authDomain: "food-os-system.firebaseapp.com",
+            databaseURL: "https://food-os-system-default-rtdb.firebaseio.com",
+            projectId: "food-os-system",
+            storageBucket: "food-os-system.firebasestorage.app",
+            messagingSenderId: "82413830766",
+            appId: "1:82413830766:web:23da82e27ead8b8f2d1c7f"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+
+        const currentSucursal = localStorage.getItem("foodos_business_token") || "cubito_sushi";
+        const usuarioActivo = localStorage.getItem("foodos_user_name") || "Repartidor";
+        const repaId = usuarioActivo.replace(/\s+/g, '_').toLowerCase();
+
+        const refBase = `businesses/${currentSucursal}`;
+        window.db = db;
+        window.repaId = repaId;
+        window.currentSucursal = currentSucursal;
+
+        document.addEventListener("DOMContentLoaded", () => {
+            document.getElementById("nombre-repartidor").innerText = usuarioActivo;
+            iniciarRastreoGPS();
+            escucharOrdenesDomicilioYPuentes();
+        });
+
+        // --- RASTREO GPS EN TIEMPO REAL ---
+        function iniciarRastreoGPS() {
+            if ("geolocation" in navigator) {
+                navigator.geolocation.watchPosition(
+                    (pos) => {
+                        const { latitude, longitude } = pos.coords;
+                        update(ref(db, `${refBase}/repartidores_rastreo/${repaId}`), {
+                            nombre: usuarioActivo,
+                            lat: latitude,
+                            lng: longitude,
+                            lastUpdate: Date.now()
+                        });
+                    },
+                    (err) => console.warn("GPS Warn:", err.message),
+                    { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+                );
+            }
+        }
+
+        // --- ESCUCHAR ÓRDENES LOCALES Y PUENTES ---
+        function escucharOrdenesDomicilioYPuentes() {
+            // 1. Escuchar órdenes locales
+            onValue(ref(db, `${refBase}/informacion_de_corte/ordenes`), (snapshot) => {
+                window.ordenesLocales = snapshot.val() || {};
+                procesarYRenderizarOrdenes();
+            });
+
+            // 2. Verificar si hay un puente activo con otra sucursal
+            get(ref(db, `${refBase}/puente_repas_activo`)).then(snapshot => {
+                const tokenPuente = snapshot.val();
+                if (tokenPuente) {
+                    onValue(ref(db, `businesses/${tokenPuente}/informacion_de_corte/ordenes`), (snapPuente) => {
+                        window.ordenesPuente = snapPuente.val() || {};
+                        procesarYRenderizarOrdenes();
+                    });
+                }
+            });
+        }
+
+        function procesarYRenderizarOrdenes() {
+            const containerDisponibles = document.getElementById("pedidos-disponibles");
+            const containerMisPedidos = document.getElementById("mis-pedidos");
+
+            containerDisponibles.innerHTML = "";
+            containerMisPedidos.innerHTML = "";
+
+            const todasLasOrdenes = { ...(window.ordenesLocales || {}), ...(window.ordenesPuente || {}) };
+            let dispCount = 0;
+            let misCount = 0;
+
+            Object.keys(todasLasOrdenes).forEach(id => {
+                const ord = todasLasOrdenes[id];
+                if (ord.tipo === "domicilio" && ord.estado !== "cancelada") {
+
+                    // Disponibles
+                    if (!ord.repartidorId && ord.estado === "activa") {
+                        dispCount++;
+                        containerDisponibles.innerHTML += `
+                            <div class="btn-raised p-4 space-y-2 relative overflow-hidden">
+                                <div class="flex justify-between items-center border-b border-white/10 pb-2">
+                                    <span class="text-xs font-black text-amber-500">📍 ${ord.detalle}</span>
+                                    <span class="text-[10px] text-slate-400 font-bold">${ord.fecha}</span>
+                                </div>
+                                <p class="text-xs opacity-80">${ord.items.length} Platillos • Total: $${ord.total} MXN</p>
+                                <button onclick="tomarPedidoConCandado('${id}')" class="btn-raised w-full py-2.5 text-xs font-black text-emerald-400 uppercase bg-emerald-500/10">
+                                    🚴 Aceptar Pedido
+                                </button>
+                            </div>
+                        `;
+                    }
+
+                    // Mis Pedidos
+                    if (ord.repartidorId === repaId) {
+                        misCount++;
+                        const esEntregado = ord.estadoRepa === "entregado";
+                        const badgeEstado = esEntregado 
+                            ? `<span class="text-emerald-400 font-bold">🟢 ENTREGADO</span>` 
+                            : `<span class="text-amber-500 font-bold">🟡 EN RUTA</span>`;
+
+                        containerMisPedidos.innerHTML += `
+                            <div class="btn-sunken p-4 space-y-2">
+                                <div class="flex justify-between items-center border-b border-white/10 pb-2">
+                                    <span class="text-xs font-black text-amber-500">📍 ${ord.detalle}</span>
+                                    ${badgeEstado}
+                                </div>
+                                <div class="flex gap-2 pt-1">
+                                    ${!esEntregado ? `
+                                        <button onclick="marcarComoEntregado('${id}')" class="btn-raised flex-1 py-2 text-xs font-black text-emerald-400 uppercase">
+                                            ✓ Marcado como Entregado
+                                        </button>
+                                    ` : '<p class="text-[10px] text-slate-400 font-bold w-full text-center">Pendiente de cobro/liquidación en Caja.</p>'}
+                                </div>
+                            </div>
+                        `;
+                    }
+                }
+            });
+
+            if (dispCount === 0) containerDisponibles.innerHTML = `<p class="text-xs text-slate-400 text-center py-8">No hay pedidos disponibles por ahora.</p>`;
+            if (misCount === 0) containerMisPedidos.innerHTML = `<p class="text-xs text-slate-400 text-center py-8">No has tomado ningún pedido en este turno.</p>`;
+        }
+
+        window.tomarPedidoConCandado = function(ordenId) {
+            const ordenRef = ref(db, `${refBase}/informacion_de_corte/ordenes/${ordenId}`);
+
+            runTransaction(ordenRef, (orden) => {
+                if (orden) {
+                    if (orden.repartidorId) return; // Ya fue tomado por otro
+                    orden.repartidorId = repaId;
+                    orden.repartidorNombre = usuarioActivo;
+                    orden.estadoRepa = "en_ruta";
+                }
+                return orden;
+            }).then((result) => {
+                if (result.committed) {
+                    alert("🚀 Pedido asignado correctamente.");
+                    update(ref(db, `${refBase}/repartidores_rastreo/${repaId}`), { estadoColor: 'verde' });
+                } else {
+                    alert("⚠️ Te lo ganaron: otro repartidor aceptó la orden primero.");
+                }
+            });
+        };
+
+        window.marcarComoEntregado = function(ordenId) {
+            update(ref(db, `${refBase}/informacion_de_corte/ordenes/${ordenId}`), {
+                estadoRepa: "entregado",
+                horaEntrega: new Date().toLocaleTimeString()
+            }).then(() => {
+                alert("✅ Orden entregada. Favor de entregar el cobro en Caja.");
+                update(ref(db, `${refBase}/repartidores_rastreo/${repaId}`), { estadoColor: 'amarillo' });
+            });
+        };
+
+        window.cerrarSesion = function() {
+            update(ref(db, `${refBase}/repartidores_rastreo/${repaId}`), { estadoColor: 'gris' }).then(() => {
+                localStorage.clear();
+                window.location.href = "index.html";
+            });
+        };
+    </script>
+</head>
+<body class="p-3 md:p-6 flex flex-col gap-4 h-screen overflow-hidden">
+
+    <header class="glass-panel h-16 px-4 flex justify-between items-center shrink-0">
+        <div class="flex items-center gap-3">
+            <span class="text-2xl">🛵</span>
+            <div>
+                <h1 class="text-sm md:text-base font-black text-amber-500 uppercase">FOOD OS REPAS</h1>
+                <span class="text-xs text-slate-400 font-bold" id="nombre-repartidor">Repartidor</span>
+            </div>
+        </div>
+        <button onclick="cerrarSesion()" class="w-10 h-10 btn-sunken flex items-center justify-center text-rose-500 font-bold">✕</button>
+    </header>
+
+    <main class="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4 overflow-hidden">
+        <section class="glass-panel p-4 flex flex-col gap-3 overflow-hidden">
+            <h2 class="text-xs font-black uppercase text-sky-400 border-b border-white/10 pb-2">📦 Pedidos Disponibles</h2>
+            <div id="pedidos-disponibles" class="flex-1 overflow-y-auto space-y-3 pr-1"></div>
+        </section>
+
+        <section class="glass-panel p-4 flex flex-col gap-3 overflow-hidden">
+            <h2 class="text-xs font-black uppercase text-amber-500 border-b border-white/10 pb-2">📋 Mis Entregas / Historial</h2>
+            <div id="mis-pedidos" class="flex-1 overflow-y-auto space-y-3 pr-1"></div>
+        </section>
+    </main>
+
+    <script src="app.js"></script>
+</body>
+</html>
