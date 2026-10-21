@@ -35,6 +35,7 @@
         window.db = db;
         window.refSecurity = refSecurity;
         window.refCorte = refCorte;
+        window.baseSucursalRef = baseSucursal;
         window.esGerente = esGerente;
         window.tipoCambioUSD = 18.00;
 
@@ -67,17 +68,6 @@
             renderizarProductos(window.menuCompleto);
         });
 
-        onValue(ref(db, `${refSecurity}/cocinas`), (snapshot) => {
-            const data = snapshot.val() || {};
-            const selectCocina = document.getElementById("prod-cocina");
-            if(selectCocina) {
-                selectCocina.innerHTML = '<option value="general">Cocina Principal</option>';
-                Object.keys(data).forEach(k => {
-                    selectCocina.innerHTML += `<option value="${k}">${data[k].nombre}</option>`;
-                });
-            }
-        });
-
         onValue(ref(db, `${refSecurity}/clientes`), (snapshot) => {
             window.clientesBaseDatos = snapshot.val() || {};
         });
@@ -86,34 +76,32 @@
             window.ordenesServidor = snapshot.val() || {};
         });
 
-        // CREAR / EDITAR PLATILLO EN BASE DE DATOS
-        document.getElementById("form-nuevo-producto")?.addEventListener("submit", (e) => {
-            e.preventDefault();
-            const id = document.getElementById("prod-id").value;
-            const nuevoPlatillo = {
-                nombre: document.getElementById("prod-nombre").value,
-                precio: parseFloat(document.getElementById("prod-precio").value),
-                categoria: document.getElementById("prod-categoria").value,
-                cocina: document.getElementById("prod-cocina").value,
-                foto: document.getElementById("prod-foto").value,
-                ingredientes: document.getElementById("prod-ingredientes").value
-            };
-
-            const targetRef = id ? ref(db, `${refSecurity}/menu/${id}`) : push(ref(db, `${refSecurity}/menu`));
-            set(targetRef, nuevoPlatillo).then(() => {
-                document.getElementById("form-nuevo-producto").reset();
-                document.getElementById("prod-id").value = "";
-                cerrarModalProducto();
-            });
+        onValue(ref(db, `${baseSucursal}/empleados`), (snapshot) => {
+            window.empleadosBaseDatos = snapshot.val() || {};
+            renderizarListaEmpleadosAdmin();
         });
 
-        // CREAR CATEGORÍA EN BASE DE DATOS
-        document.getElementById("form-nueva-categoria")?.addEventListener("submit", (e) => {
+        // REGISTRAR O EDITAR TRABAJADOR
+        document.getElementById("form-trabajador")?.addEventListener("submit", (e) => {
             e.preventDefault();
-            const nombre = document.getElementById("cat-nombre").value;
-            push(ref(db, `${refSecurity}/categorias`), { nombre }).then(() => {
-                document.getElementById("form-nueva-categoria").reset();
-                cerrarModalCategoria();
+            const idEmp = document.getElementById("emp-id").value;
+            const nombre = document.getElementById("emp-nombre").value.trim();
+            const rol = document.getElementById("emp-rol").value;
+            const telefono = document.getElementById("emp-telefono").value.trim();
+            const pin = document.getElementById("emp-pin").value.trim();
+
+            if (!nombre || !pin) return alert("Ingresa nombre y PIN obligatorio.");
+
+            const empData = { nombre, rol, telefono, pin };
+
+            // Guardar perfil y mapear PIN en nodo principal del negocio
+            const empRefKey = idEmp || pin;
+            set(ref(db, `${baseSucursal}/empleados/${empRefKey}`), empData).then(() => {
+                set(ref(db, `${baseSucursal}/pins/${pin}`), rol);
+                alert("✅ Trabajador guardado exitosamente.");
+                document.getElementById("form-trabajador").reset();
+                document.getElementById("emp-id").value = "";
+                cerrarModalTrabajador();
             });
         });
 
@@ -257,46 +245,6 @@
         </section>
     </main>
 
-    <!-- MODAL CATEGORÍA -->
-    <div id="modal-agregar-categoria" class="hidden fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
-        <div class="glass-panel w-full max-w-xs p-4 space-y-3">
-            <h3 class="text-sm font-black text-amber-500 border-b border-white/10 pb-2">📂 Nueva Categoría</h3>
-            <form id="form-nueva-categoria" class="space-y-2">
-                <input type="text" id="cat-nombre" required class="btn-sunken w-full p-2 text-xs outline-none" placeholder="Ej. Entradas, Sushi, Bebidas">
-                <div class="flex gap-2 pt-2">
-                    <button type="button" onclick="cerrarModalCategoria()" class="btn-raised w-1/2 py-2 text-xs font-bold">Cancelar</button>
-                    <button type="submit" class="btn-raised w-1/2 py-2 text-xs font-bold text-amber-500 bg-amber-500/20">Guardar</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- MODAL AGREGAR / EDITAR PLATILLO -->
-    <div id="modal-agregar-producto" class="hidden fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
-        <div class="glass-panel w-full max-w-md p-5 space-y-3">
-            <h3 class="text-lg font-black text-amber-500 border-b border-black/10 dark:border-white/10 pb-2" id="modal-platillo-titulo">➕ Nuevo Platillo</h3>
-            <form id="form-nuevo-producto" class="space-y-2 text-xs md:text-sm">
-                <input type="hidden" id="prod-id">
-                <input type="text" id="prod-nombre" required class="btn-sunken w-full px-3 py-2 outline-none" placeholder="Nombre del Platillo">
-                <div class="grid grid-cols-2 gap-2">
-                    <input type="number" id="prod-precio" step="0.01" required class="btn-sunken w-full px-3 py-2 outline-none" placeholder="Precio ($ MXN)">
-                    <select id="prod-categoria" class="btn-sunken w-full px-3 py-2 outline-none bg-slate-900"></select>
-                </div>
-                <div class="grid grid-cols-1 gap-2">
-                    <label class="text-[10px] text-slate-400 font-bold">Enviar comanda a:</label>
-                    <select id="prod-cocina" class="btn-sunken w-full px-3 py-2 outline-none bg-slate-900"></select>
-                </div>
-                <input type="url" id="prod-foto" required class="btn-sunken w-full px-3 py-2 outline-none" placeholder="URL Foto Imagen">
-                <textarea id="prod-ingredientes" rows="2" class="btn-sunken w-full p-2 outline-none" placeholder="Ingredientes..."></textarea>
-                
-                <div class="flex gap-2 pt-2">
-                    <button type="button" onclick="cerrarModalProducto()" class="btn-raised w-1/2 py-2 font-bold">Cancelar</button>
-                    <button type="submit" class="btn-raised w-1/2 py-2 font-bold text-amber-500 bg-amber-500/20">Guardar</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
     <!-- MODAL EDITAR PLATILLO DEL TICKET -->
     <div id="modal-editar-item-ticket" class="hidden fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
         <div class="glass-panel w-full max-w-sm p-5 space-y-4">
@@ -324,7 +272,7 @@
         </div>
     </div>
 
-    <!-- MODAL ENVIAR ORDEN (COMEDOR / LLEVAR / DOMICILIO) -->
+    <!-- MODAL ENVIAR ORDEN -->
     <div id="modal-enviar-orden" class="hidden fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
         <div class="glass-panel w-full max-w-md p-5 space-y-4">
             <div class="flex justify-between items-center border-b border-white/10 pb-2">
@@ -338,43 +286,80 @@
                 <button onclick="confirmarEnvioSimple()" class="btn-raised w-full py-3 text-xs font-black uppercase text-emerald-400">Confirmar y Enviar</button>
             </div>
 
-            <div id="seccion-domicilio-envio" class="space-y-3 hidden">
-                <p class="text-xs text-slate-300 font-bold">Buscar por Teléfono:</p>
-                <input type="tel" id="dom-telefono" oninput="buscarClientePorTelefono()" class="btn-sunken w-full p-2.5 text-sm outline-none" placeholder="Teléfono a 10 dígitos">
-                
-                <div id="sugerencias-clientes" class="max-h-28 overflow-y-auto space-y-1"></div>
+            <div id="seccion-domicilio-envio" class="space-y-3 hidden relative">
+                <div class="relative">
+                    <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Buscar por Teléfono:</label>
+                    <input type="tel" id="dom-telefono" oninput="buscarClientePorTelefono()" class="btn-sunken w-full p-2.5 text-sm outline-none" placeholder="Ingresa número de teléfono...">
+                    
+                    <div id="sugerencias-clientes" class="hidden absolute top-full left-0 w-full bg-slate-900/95 border border-amber-500/30 rounded-xl mt-1 max-h-36 overflow-y-auto z-50 shadow-2xl backdrop-blur-md"></div>
+                </div>
 
                 <div class="grid grid-cols-2 gap-2 text-xs">
-                    <input type="text" id="dom-nombre" class="btn-sunken p-2 outline-none" placeholder="Nombre completo">
-                    <input type="text" id="dom-colonia" class="btn-sunken p-2 outline-none" placeholder="Colonia">
+                    <div>
+                        <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Cliente:</label>
+                        <input type="text" id="dom-nombre" class="btn-sunken w-full p-2 outline-none" placeholder="Nombre completo">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Colonia:</label>
+                        <input type="text" id="dom-colonia" class="btn-sunken w-full p-2 outline-none" placeholder="Colonia">
+                    </div>
                 </div>
+
                 <div class="grid grid-cols-3 gap-2 text-xs">
-                    <input type="text" id="dom-calle" class="btn-sunken col-span-2 p-2 outline-none" placeholder="Calle">
-                    <input type="text" id="dom-numero" class="btn-sunken p-2 outline-none" placeholder="NumExt">
+                    <div class="col-span-2">
+                        <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Calle:</label>
+                        <input type="text" id="dom-calle" class="btn-sunken w-full p-2 outline-none" placeholder="Nombre de la calle">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Número Ext:</label>
+                        <input type="text" id="dom-numero" class="btn-sunken w-full p-2 outline-none" placeholder="# Casa">
+                    </div>
                 </div>
-                <textarea id="dom-notas" rows="2" class="btn-sunken w-full p-2 text-xs outline-none" placeholder="Notas de entrega sin límite..."></textarea>
+
+                <div>
+                    <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Referencias de la Casa:</label>
+                    <textarea id="dom-notas" rows="2" class="btn-sunken w-full p-2 text-xs outline-none" placeholder="Ej. Casa negra con 5 perritas y un garaje..."></textarea>
+                </div>
 
                 <div class="flex gap-2 pt-1">
                     <button type="button" onclick="cerrarModalEnvio()" class="btn-raised w-1/2 py-2.5 text-xs font-bold text-rose-500">Cancelar</button>
-                    <button type="button" onclick="confirmarEnvioDomicilio()" class="btn-raised w-1/2 py-2.5 text-xs font-black text-emerald-400 uppercase">Guardar y Enviar</button>
+                    <button type="button" onclick="confirmarEnvioDomicilio()" class="btn-raised w-1/2 py-2.5 text-xs font-black text-emerald-400 uppercase">GUARDAR Y ENVIAR</button>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- MODAL VER Y MODIFICAR ÓRDENES DEL SERVIDOR -->
+    <!-- MODAL VER ÓRDENES (TODAS Y POR ESTADO/TIPO) -->
     <div id="modal-ver-ordenes" class="hidden fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
-        <div class="glass-panel w-full max-w-lg p-5 space-y-3">
+        <div class="glass-panel w-full max-w-xl p-5 space-y-3">
             <div class="flex justify-between items-center border-b border-white/10 pb-2">
-                <h3 class="text-base font-black text-amber-500" id="titulo-modal-ordenes">Órdenes Pendientes</h3>
+                <h3 class="text-base font-black text-amber-500" id="titulo-modal-ordenes">📜 Historial General de Órdenes</h3>
                 <button onclick="cerrarModalOrdenes()" class="btn-sunken w-7 h-7 text-xs">✕</button>
             </div>
-            <p class="text-[10px] text-slate-400 font-bold">💡 Haz doble clic en una orden para editar o cobrar.</p>
+
+            <!-- FILTROS DE TIPO Y ESTADO -->
+            <div class="grid grid-cols-2 gap-2 text-[10px] font-bold">
+                <select id="filtro-tipo-orden" onchange="renderizarOrdenesModal()" class="btn-sunken p-2 bg-slate-900 text-amber-500">
+                    <option value="todos">Todos los Tipos (Comedor, Llevar, Domicilio)</option>
+                    <option value="comedor">Comedor</option>
+                    <option value="llevar">Llevar</option>
+                    <option value="domicilio">Domicilio</option>
+                </select>
+
+                <select id="filtro-estado-orden" onchange="renderizarOrdenesModal()" class="btn-sunken p-2 bg-slate-900 text-sky-400">
+                    <option value="todos">Todos los Estados (Pendientes, Cobradas, Canceladas)</option>
+                    <option value="activa">Pendientes (Activas)</option>
+                    <option value="pagada">Cobradas (Pagadas)</option>
+                    <option value="cancelada">Canceladas</option>
+                </select>
+            </div>
+
+            <p class="text-[10px] text-slate-400 font-bold">💡 Haz doble clic en cualquier orden pendiente para cargarla al ticket.</p>
             <div id="lista-ordenes-servidor" class="max-h-80 overflow-y-auto space-y-2 pr-1"></div>
         </div>
     </div>
 
-    <!-- MODAL DE COBRO (PESOS, USD, TARJETA Y CAMBIO) -->
+    <!-- MODAL DE COBRO -->
     <div id="modal-cobrar-orden" class="hidden fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
         <div class="glass-panel w-full max-w-sm p-5 space-y-4">
             <div class="flex justify-between items-center border-b border-white/10 pb-2">
@@ -408,7 +393,7 @@
         </div>
     </div>
 
-    <!-- MODAL RESUMEN CORTE GENERAL -->
+    <!-- MODAL RESUMEN CORTE GENERAL CON TICKET PROMEDIO Y TOTAL ÓRDENES -->
     <div id="modal-resumen-corte" class="hidden fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
         <div class="glass-panel w-full max-w-md p-5 space-y-3">
             <div class="flex justify-between items-center border-b border-white/10 pb-2">
@@ -416,7 +401,7 @@
                 <button onclick="cerrarModalCorte()" class="btn-sunken w-7 h-7 text-xs">✕</button>
             </div>
 
-            <textarea id="texto-resumen-corte" rows="12" readonly class="btn-sunken w-full p-3 text-xs font-mono outline-none text-slate-200"></textarea>
+            <textarea id="texto-resumen-corte" rows="14" readonly class="btn-sunken w-full p-3 text-xs font-mono outline-none text-slate-200"></textarea>
 
             <div class="flex gap-2">
                 <button onclick="copiarCorteAlPortapapeles()" class="btn-raised w-full py-2.5 text-xs font-bold text-sky-400">📋 Copiar al Portapapeles</button>
@@ -434,7 +419,46 @@
             
             <div class="space-y-2 text-xs font-bold">
                 <button onclick="verTodasLasOrdenes()" class="btn-raised w-full p-3 text-left">📜 Ver Todas las Órdenes</button>
+                <button onclick="abrirModalTrabajadores()" class="solo-gerente hidden btn-raised w-full p-3 text-left text-amber-400">👥 Gestión de Trabajadores (Admin)</button>
                 <button onclick="ejecutarCorteGeneral()" class="btn-raised w-full p-3 text-left text-emerald-400">💵 Realizar Corte General</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL GESTIÓN DE TRABAJADORES (EXCLUSIVO GERENTE/ADMIN) -->
+    <div id="modal-gestion-trabajadores" class="hidden fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
+        <div class="glass-panel w-full max-w-lg p-5 space-y-4">
+            <div class="flex justify-between items-center border-b border-white/10 pb-2">
+                <h3 class="text-base font-black text-amber-500">👥 Trabajadores de la Sucursal</h3>
+                <button onclick="cerrarModalTrabajadores()" class="btn-sunken w-7 h-7 text-xs">✕</button>
+            </div>
+
+            <!-- REGISTRO DE NUEVO EMPLEADO -->
+            <form id="form-trabajador" class="glass-panel p-3 space-y-2 text-xs">
+                <input type="hidden" id="emp-id">
+                <p class="font-bold text-amber-500 uppercase text-[10px]">Añadir / Modificar Empleado:</p>
+                <div class="grid grid-cols-2 gap-2">
+                    <input type="text" id="emp-nombre" required class="btn-sunken p-2 outline-none" placeholder="Nombre completo">
+                    <select id="emp-rol" class="btn-sunken p-2 bg-slate-900 outline-none text-amber-500 font-bold">
+                        <option value="caja">Cajero / Caja</option>
+                        <option value="cocina">Cocinero / Cocina</option>
+                        <option value="repartidor">Repartidor / Repa</option>
+                        <option value="admin">Administrador / Gerente</option>
+                    </select>
+                </div>
+
+                <div class="grid grid-cols-2 gap-2">
+                    <input type="tel" id="emp-telefono" class="btn-sunken p-2 outline-none" placeholder="Teléfono Móvil">
+                    <input type="password" id="emp-pin" required maxlength="4" class="btn-sunken p-2 outline-none text-center font-black tracking-widest" placeholder="PIN NIP (4 DÍGITOS)">
+                </div>
+
+                <button type="submit" class="btn-raised w-full py-2 font-black text-emerald-400 uppercase">Guardar Empleado</button>
+            </form>
+
+            <!-- LISTADO DE TRABAJADORES CATEGORIZADOS -->
+            <div class="space-y-2">
+                <p class="text-[10px] font-bold text-slate-400 uppercase">Lista de Personal Registrado:</p>
+                <div id="lista-trabajadores-admin" class="max-h-52 overflow-y-auto space-y-2 pr-1 text-xs"></div>
             </div>
         </div>
     </div>
@@ -456,60 +480,32 @@
             renderizarProductos(window.menuCompleto);
         }
 
-        // 📂 RENDERIZAR CATEGORÍAS CON SHAKE Y BOTÓN AGREGAR
         function renderizarCategorias() {
             const container = document.getElementById("categories-bar");
-            const selectModal = document.getElementById("prod-categoria");
             if(!container) return;
-
             container.innerHTML = `<button onclick="filtrarCategoria('Todos')" class="btn-raised px-4 py-2 text-xs font-bold whitespace-nowrap">Todos</button>`;
-            if(selectModal) selectModal.innerHTML = "";
-
             const cats = window.categoriasMap || {};
             Object.keys(cats).forEach(id => {
                 const cat = cats[id];
-                const shakeClass = modoEdicionActivo ? 'modo-shake relative' : '';
-                const btnEdit = modoEdicionActivo ? `<button onclick="borrarCategoria('${id}')" class="absolute -top-1 -right-1 bg-rose-500 text-white rounded-full w-4 h-4 text-[9px] flex items-center justify-center z-20">✕</button>` : '';
-
                 container.innerHTML += `
-                    <div class="inline-block relative shrink-0">
-                        ${btnEdit}
-                        <button onclick="filtrarCategoria('${cat.nombre}')" class="btn-raised px-4 py-2 text-xs font-bold whitespace-nowrap ${shakeClass}">
-                            ${cat.nombre}
-                        </button>
-                    </div>
+                    <button onclick="filtrarCategoria('${cat.nombre}')" class="btn-raised px-4 py-2 text-xs font-bold whitespace-nowrap">
+                        ${cat.nombre}
+                    </button>
                 `;
-
-                if(selectModal) selectModal.innerHTML += `<option value="${cat.nombre}">${cat.nombre}</option>`;
             });
-
-            if (modoEdicionActivo) {
-                container.innerHTML += `<button onclick="abrirModalCategoria()" class="btn-raised px-3 py-2 text-xs font-bold text-amber-500 border-dashed border border-amber-500/50">+ Cat</button>`;
-            }
         }
 
-        // 🍣 RENDERIZAR PRODUCTOS CON SHAKE Y BOTONES EDICIÓN GERENTE
         function renderizarProductos(productos) {
             const grid = document.getElementById("products-grid");
             if(!grid) return;
             grid.innerHTML = "";
-
             if (!productos || Object.keys(productos).length === 0) {
                 grid.innerHTML = `<div class="col-span-full text-center py-12 text-slate-400 font-medium text-sm">No hay productos.</div>`;
             } else {
                 Object.keys(productos).forEach(id => {
                     const item = productos[id];
-                    const shakeClass = modoEdicionActivo ? 'modo-shake' : '';
-                    const botoneraEdicion = modoEdicionActivo ? `
-                        <div class="absolute top-1 right-1 flex gap-1 z-20">
-                            <button onclick="event.stopPropagation(); editarProducto('${id}')" class="bg-amber-500 text-black rounded-full w-6 h-6 text-xs font-bold flex items-center justify-center">✏️</button>
-                            <button onclick="event.stopPropagation(); borrarProducto('${id}')" class="bg-rose-500 text-white rounded-full w-6 h-6 text-xs font-bold flex items-center justify-center">✕</button>
-                        </div>
-                    ` : '';
-
                     grid.innerHTML += `
-                        <div onclick="agregarAlTicket('${item.nombre}', ${item.precio})" class="btn-raised p-3 flex flex-col justify-between h-32 md:h-40 cursor-pointer relative overflow-hidden group active:scale-95 transition-transform ${shakeClass}">
-                            ${botoneraEdicion}
+                        <div onclick="agregarAlTicket('${item.nombre}', ${item.precio})" class="btn-raised p-3 flex flex-col justify-between h-32 md:h-40 cursor-pointer relative overflow-hidden group active:scale-95 transition-transform">
                             <img src="${item.foto}" class="absolute inset-0 w-full h-full object-cover opacity-20 group-hover:opacity-40 transition-opacity" />
                             <span class="text-[10px] font-bold uppercase text-amber-500 z-10">${item.categoria}</span>
                             <div class="z-10">
@@ -519,15 +515,6 @@
                         </div>
                     `;
                 });
-            }
-
-            if (modoEdicionActivo) {
-                grid.innerHTML += `
-                    <div onclick="abrirModalProducto()" class="btn-raised p-3 flex flex-col items-center justify-center h-32 md:h-40 cursor-pointer text-amber-500 border-dashed border-2 border-amber-500/50 bg-amber-500/10 active:scale-95">
-                        <span class="text-3xl font-black">+</span>
-                        <span class="text-xs font-bold uppercase mt-1">Nuevo Platillo</span>
-                    </div>
-                `;
             }
         }
 
@@ -595,47 +582,6 @@
             document.getElementById("total-usd").innerText = `$${totalUSD.toFixed(2)} USD`;
         }
 
-        // FUNCIONES DE EDICIÓN / BORRADO DE BASE DE DATOS (MODO GERENTE)
-        function editarProducto(id) {
-            const item = window.menuCompleto[id];
-            if(!item) return;
-            document.getElementById("prod-id").value = id;
-            document.getElementById("prod-nombre").value = item.nombre;
-            document.getElementById("prod-precio").value = item.precio;
-            document.getElementById("prod-categoria").value = item.categoria;
-            document.getElementById("prod-cocina").value = item.cocina || 'general';
-            document.getElementById("prod-foto").value = item.foto;
-            document.getElementById("prod-ingredientes").value = item.ingredientes || '';
-            document.getElementById("modal-platillo-titulo").innerText = "✏️ Editar Platillo";
-            abrirModalProducto();
-        }
-
-        function borrarProducto(id) {
-            if(confirm("¿Eliminar este platillo permanentemente?")) {
-                import("https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js").then(({ ref, remove }) => {
-                    remove(ref(window.db, `${window.refSecurity}/menu/${id}`));
-                });
-            }
-        }
-
-        function borrarCategoria(id) {
-            if(confirm("¿Eliminar esta categoría?")) {
-                import("https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js").then(({ ref, remove }) => {
-                    remove(ref(window.db, `${window.refSecurity}/categorias/${id}`));
-                });
-            }
-        }
-
-        function abrirModalCategoria() { document.getElementById("modal-agregar-categoria").classList.remove("hidden"); }
-        function cerrarModalCategoria() { document.getElementById("modal-agregar-categoria").classList.add("hidden"); }
-        function abrirModalProducto() { document.getElementById("modal-agregar-producto").classList.remove("hidden"); }
-        function cerrarModalProducto() { 
-            document.getElementById("modal-agregar-producto").classList.add("hidden"); 
-            document.getElementById("prod-id").value = "";
-            document.getElementById("modal-platillo-titulo").innerText = "➕ Nuevo Platillo";
-        }
-
-        // FUNCIONES MODAL EDITAR PLATILLO DEL TICKET LOCAL
         function abrirModalEditarPlatilloTicket(id) {
             const item = ticketArray.find(i => i.id === id);
             if (!item) return;
@@ -666,9 +612,7 @@
             const nuevoNombre = document.getElementById("edit-item-reemplazo").value;
 
             item.nota = nuevaNota;
-            if (nuevoNombre) {
-                item.nombre = nuevoNombre;
-            }
+            if (nuevoNombre) item.nombre = nuevoNombre;
 
             renderizarTicket();
             cerrarModalEditarItemTicket();
@@ -686,7 +630,6 @@
             platilloTicketEditandoId = null;
         }
 
-        // ENVIAR ORDEN A FIREBASE
         function abrirModalEnviarOrden() {
             if (ticketArray.length === 0) return alert("Añade productos a la comanda primero.");
             const modal = document.getElementById("modal-enviar-orden");
@@ -709,20 +652,30 @@
             const telInput = document.getElementById("dom-telefono").value.trim();
             const sugContainer = document.getElementById("sugerencias-clientes");
             sugContainer.innerHTML = "";
-            if (telInput.length < 3) return;
+
+            if (telInput.length < 3) {
+                sugContainer.classList.add("hidden");
+                return;
+            }
 
             const clientes = window.clientesBaseDatos || {};
+            let matchCount = 0;
+
             Object.keys(clientes).forEach(id => {
                 const c = clientes[id];
                 if (c.telefono && c.telefono.includes(telInput)) {
+                    matchCount++;
                     sugContainer.innerHTML += `
-                        <div onclick="cargarDatosCliente('${id}')" class="btn-sunken p-2 text-xs flex justify-between items-center cursor-pointer hover:bg-amber-500/20">
-                            <span class="font-bold text-amber-500">${c.telefono} - ${c.nombre}</span>
-                            <span class="text-[10px] text-slate-400">${c.colonia}</span>
+                        <div onclick="cargarDatosCliente('${id}')" class="p-2 text-xs flex justify-between items-center cursor-pointer hover:bg-amber-500/20 border-b border-white/5 last:border-none">
+                            <span class="font-bold text-amber-500">📞 ${c.telefono} — ${c.nombre}</span>
+                            <span class="text-[10px] text-slate-400 font-semibold">${c.colonia || ''}</span>
                         </div>
                     `;
                 }
             });
+
+            if (matchCount > 0) sugContainer.classList.remove("hidden");
+            else sugContainer.classList.add("hidden");
         }
 
         function cargarDatosCliente(id) {
@@ -734,7 +687,7 @@
             document.getElementById("dom-calle").value = c.calle || "";
             document.getElementById("dom-numero").value = c.numero || "";
             document.getElementById("dom-notas").value = c.notas || "";
-            document.getElementById("sugerencias-clientes").innerHTML = "";
+            document.getElementById("sugerencias-clientes").classList.add("hidden");
         }
 
         function confirmarEnvioSimple() {
@@ -784,42 +737,64 @@
             });
         }
 
-        // VER ÓRDENES Y MODIFICAR CON DOBLE CLIC
-        function verOrdenesPorTipo(tipo) {
-            const modal = document.getElementById("modal-ver-ordenes");
-            const container = document.getElementById("lista-ordenes-servidor");
-            document.getElementById("titulo-modal-ordenes").innerText = `Órdenes Pendientes: ${tipo.toUpperCase()}`;
-            container.innerHTML = "";
+        function verTodasLasOrdenes() {
+            document.getElementById("filtro-tipo-orden").value = "todos";
+            document.getElementById("filtro-estado-orden").value = "todos";
+            renderizarOrdenesModal();
+            document.getElementById("modal-ver-ordenes").classList.remove("hidden");
+            cerrarModalMas();
+        }
 
+        function verOrdenesPorTipo(tipo) {
+            document.getElementById("filtro-tipo-orden").value = tipo;
+            document.getElementById("filtro-estado-orden").value = "activa";
+            renderizarOrdenesModal();
+            document.getElementById("modal-ver-ordenes").classList.remove("hidden");
+        }
+
+        function renderizarOrdenesModal() {
+            const container = document.getElementById("lista-ordenes-servidor");
+            const filtroTipo = document.getElementById("filtro-tipo-orden").value;
+            const filtroEstado = document.getElementById("filtro-estado-orden").value;
+
+            container.innerHTML = "";
             const ordenes = window.ordenesServidor || {};
-            let hayOrdenes = false;
+            let count = 0;
 
             Object.keys(ordenes).forEach(id => {
                 const ord = ordenes[id];
-                if (ord.tipo === tipo && ord.estado === "activa") {
-                    hayOrdenes = true;
+                const pasaTipo = (filtroTipo === "todos" || ord.tipo === filtroTipo);
+                const pasaEstado = (filtroEstado === "todos" || ord.estado === filtroEstado);
+
+                if (pasaTipo && pasaEstado) {
+                    count++;
+                    let estadoBadge = `<span class="text-amber-400 font-bold">🟡 Pendiente</span>`;
+                    if (ord.estado === "pagada") estadoBadge = `<span class="text-emerald-400 font-bold">🟢 Cobrada</span>`;
+                    if (ord.estado === "cancelada") estadoBadge = `<span class="text-rose-500 font-bold">🔴 Cancelada</span>`;
+
                     container.innerHTML += `
                         <div ondblclick="abrirOpcionesOrden('${id}')" class="btn-sunken p-3 text-xs flex justify-between items-center cursor-pointer hover:bg-amber-500/10">
                             <div>
-                                <p class="font-bold text-amber-500">${ord.detalle} (${ord.fecha})</p>
-                                <p class="text-[10px] text-slate-400">${ord.items.length} productos - Total: $${ord.total} MXN</p>
+                                <p class="font-bold text-amber-500">[${ord.tipo.toUpperCase()}] ${ord.detalle} (${ord.fecha})</p>
+                                <p class="text-[10px] text-slate-400">${ord.items.length} productos - Total: $${ord.total} MXN - ${estadoBadge}</p>
                             </div>
                             <div class="flex gap-1">
-                                <button onclick="iniciarCobroServidor('${id}')" class="btn-raised px-2 py-1 text-emerald-400 font-bold">Cobrar</button>
-                                <button onclick="cancelarOrdenServidorConPin('${id}')" class="btn-raised px-2 py-1 text-rose-500 font-bold">✕</button>
+                                ${ord.estado === 'activa' ? `<button onclick="iniciarCobroServidor('${id}')" class="btn-raised px-2 py-1 text-emerald-400 font-bold">Cobrar</button>` : ''}
+                                ${ord.estado !== 'cancelada' ? `<button onclick="cancelarOrdenServidorConPin('${id}')" class="btn-raised px-2 py-1 text-rose-500 font-bold">✕</button>` : ''}
                             </div>
                         </div>
                     `;
                 }
             });
 
-            if (!hayOrdenes) container.innerHTML = `<p class="text-xs text-slate-400 text-center py-4">No hay órdenes activas aquí.</p>`;
-            modal.classList.remove("hidden");
+            if (count === 0) container.innerHTML = `<p class="text-xs text-slate-400 text-center py-4">No hay órdenes que coincidan con los filtros.</p>`;
         }
 
         function abrirOpcionesOrden(id) {
             const ord = window.ordenesServidor[id];
             if (!ord) return;
+            if (ord.estado !== "activa") return alert("Solo se pueden volver a cargar al ticket las órdenes pendientes.");
+
             if (confirm(`¿Deseas editar la comanda de ${ord.detalle}? (Cargará los ítems al ticket actual)`)) {
                 ticketArray = [...ord.items];
                 renderizarTicket();
@@ -833,17 +808,16 @@
         function cancelarOrdenServidorConPin(id) {
             const pin = prompt("🔒 Ingrese PIN de Administrador/Gerente para cancelar orden:");
             if (pin === "1234" || window.esGerente) {
-                import("https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js").then(({ ref, remove }) => {
-                    remove(ref(window.db, `${window.refCorte}/ordenes/${id}`));
-                    cerrarModalOrdenes();
-                    alert("🗑️ Orden cancelada.");
+                import("https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js").then(({ ref, update }) => {
+                    update(ref(window.db, `${window.refCorte}/ordenes/${id}`), { estado: "cancelada" });
+                    renderizarOrdenesModal();
+                    alert("🗑️ Orden marcada como cancelada.");
                 });
             } else {
                 alert("❌ PIN Incorrecto.");
             }
         }
 
-        // COBRO Y CÁLCULO DE CAMBIO
         function iniciarCobroServidor(id) {
             ordenActualProcesando = window.ordenesServidor[id];
             ordenActualProcesando.idKey = id;
@@ -901,11 +875,7 @@
             }
 
             const elemCambio = document.getElementById("cambio-monto-display");
-            if (cambioMXN < 0) {
-                elemCambio.innerText = "$0.00 MXN";
-            } else {
-                elemCambio.innerText = `$${cambioMXN.toFixed(2)} MXN`;
-            }
+            elemCambio.innerText = cambioMXN < 0 ? "$0.00 MXN" : `$${cambioMXN.toFixed(2)} MXN`;
         }
 
         function finalizarProcesoCobro() {
@@ -931,7 +901,7 @@
             });
         }
 
-        // CORTE GENERAL DETALLADO Y TEXTO COPIABLE
+        // CORTE GENERAL COMPLETO (CON TICKET PROMEDIO Y CANTIDAD DE ÓRDENES)
         function ejecutarCorteGeneral() {
             if(!confirm("¿Seguro que deseas realizar el CORTE GENERAL? Se archivará todo el turno.")) return;
 
@@ -943,6 +913,7 @@
 
                     let totalPesos = 0, totalDolares = 0, totalTarjeta = 0, totalGeneral = 0;
                     let conteoPlatillos = {};
+                    let totalOrdenesRealizadas = Object.keys(ordenes).length;
 
                     Object.keys(pagos).forEach(k => {
                         const p = pagos[k];
@@ -968,17 +939,21 @@
                         }
                     });
 
+                    const ticketPromedio = totalOrdenesRealizadas > 0 ? (totalGeneral / totalOrdenesRealizadas) : 0;
                     const fechaHoy = new Date().toLocaleDateString('es-MX', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+
                     const reporteTexto = 
 `================================
 📊 FOOD OS - CORTE DE CAJA
 Día: ${fechaHoy}
 ================================
-💵 Efectivo Pesos:  $${totalPesos.toFixed(2)} MXN
+💵 Efectivo Pesos:   $${totalPesos.toFixed(2)} MXN
 💵 Efectivo Dólares: $${totalDolares.toFixed(2)} MXN
-💳 Tarjeta:         $${totalTarjeta.toFixed(2)} MXN
+💳 Tarjeta:          $${totalTarjeta.toFixed(2)} MXN
 --------------------------------
-💰 TOTAL GENERAL:   $${totalGeneral.toFixed(2)} MXN
+💰 TOTAL GENERAL:    $${totalGeneral.toFixed(2)} MXN
+📦 TOTAL ÓRDENES:    ${totalOrdenesRealizadas}
+📊 TICKET PROMEDIO:  $${ticketPromedio.toFixed(2)} MXN
 --------------------------------
 🏆 Platillo más vendido:
 ${platilloTop}
@@ -1001,13 +976,71 @@ ${platilloTop}
             alert("📋 Reporte copiado al portapapeles.");
         }
 
+        // GESTIÓN DE TRABAJADORES (ADMIN)
+        function abrirModalTrabajadores() {
+            renderizarListaEmpleadosAdmin();
+            document.getElementById("modal-gestion-trabajadores").classList.remove("hidden");
+            cerrarModalMas();
+        }
+
+        function cerrarModalTrabajadores() {
+            document.getElementById("modal-gestion-trabajadores").classList.add("hidden");
+        }
+
+        function renderizarListaEmpleadosAdmin() {
+            const container = document.getElementById("lista-trabajadores-admin");
+            if (!container) return;
+            container.innerHTML = "";
+
+            const emps = window.empleadosBaseDatos || {};
+            if (Object.keys(emps).length === 0) {
+                container.innerHTML = `<p class="text-xs text-slate-400 text-center py-2">No hay empleados registrados.</p>`;
+                return;
+            }
+
+            Object.keys(emps).forEach(id => {
+                const emp = emps[id];
+                container.innerHTML += `
+                    <div class="btn-sunken p-2.5 flex justify-between items-center text-xs">
+                        <div>
+                            <p class="font-black text-amber-500">${emp.nombre} <span class="text-[10px] text-slate-400">(${emp.rol.toUpperCase()})</span></p>
+                            <p class="text-[10px] text-slate-400">📞 ${emp.telefono || 'Sin tel'} - PIN: ****</p>
+                        </div>
+                        <div class="flex gap-1">
+                            <button onclick="editarEmpleadoAdmin('${id}')" class="bg-amber-500 text-black px-2 py-1 rounded font-bold">✏️</button>
+                            <button onclick="despedirEmpleadoAdmin('${id}', '${emp.pin}')" class="bg-rose-500 text-white px-2 py-1 rounded font-bold">✕</button>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        function editarEmpleadoAdmin(id) {
+            const emp = window.empleadosBaseDatos[id];
+            if (!emp) return;
+            document.getElementById("emp-id").value = id;
+            document.getElementById("emp-nombre").value = emp.nombre;
+            document.getElementById("emp-rol").value = emp.rol;
+            document.getElementById("emp-telefono").value = emp.telefono || "";
+            document.getElementById("emp-pin").value = emp.pin;
+        }
+
+        function despedirEmpleadoAdmin(id, pin) {
+            if (confirm("¿Despedir/Eliminar a este trabajador del sistema de la sucursal?")) {
+                import("https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js").then(({ ref, remove }) => {
+                    remove(ref(window.db, `${window.baseSucursalRef}/empleados/${id}`));
+                    remove(ref(window.db, `${window.baseSucursalRef}/pins/${pin}`));
+                    alert("🗑️ Empleado retirado del sistema.");
+                });
+            }
+        }
+
         function cerrarModalEnvio() { document.getElementById("modal-enviar-orden").classList.add("hidden"); }
         function cerrarModalOrdenes() { document.getElementById("modal-ver-ordenes").classList.add("hidden"); }
         function cerrarModalCobro() { document.getElementById("modal-cobrar-orden").classList.add("hidden"); }
         function cerrarModalCorte() { document.getElementById("modal-resumen-corte").classList.add("hidden"); }
         function abrirModalMas() { document.getElementById("modal-menu-mas").classList.remove("hidden"); }
         function cerrarModalMas() { document.getElementById("modal-menu-mas").classList.add("hidden"); }
-        function verTodasLasOrdenes() { verOrdenesPorTipo('comedor'); cerrarModalMas(); }
     </script>
 </body>
 </html>
