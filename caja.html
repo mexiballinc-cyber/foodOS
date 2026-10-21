@@ -67,12 +67,54 @@
             renderizarProductos(window.menuCompleto);
         });
 
+        onValue(ref(db, `${refSecurity}/cocinas`), (snapshot) => {
+            const data = snapshot.val() || {};
+            const selectCocina = document.getElementById("prod-cocina");
+            if(selectCocina) {
+                selectCocina.innerHTML = '<option value="general">Cocina Principal</option>';
+                Object.keys(data).forEach(k => {
+                    selectCocina.innerHTML += `<option value="${k}">${data[k].nombre}</option>`;
+                });
+            }
+        });
+
         onValue(ref(db, `${refSecurity}/clientes`), (snapshot) => {
             window.clientesBaseDatos = snapshot.val() || {};
         });
 
         onValue(ref(db, `${refCorte}/ordenes`), (snapshot) => {
             window.ordenesServidor = snapshot.val() || {};
+        });
+
+        // CREAR / EDITAR PLATILLO EN BASE DE DATOS
+        document.getElementById("form-nuevo-producto")?.addEventListener("submit", (e) => {
+            e.preventDefault();
+            const id = document.getElementById("prod-id").value;
+            const nuevoPlatillo = {
+                nombre: document.getElementById("prod-nombre").value,
+                precio: parseFloat(document.getElementById("prod-precio").value),
+                categoria: document.getElementById("prod-categoria").value,
+                cocina: document.getElementById("prod-cocina").value,
+                foto: document.getElementById("prod-foto").value,
+                ingredientes: document.getElementById("prod-ingredientes").value
+            };
+
+            const targetRef = id ? ref(db, `${refSecurity}/menu/${id}`) : push(ref(db, `${refSecurity}/menu`));
+            set(targetRef, nuevoPlatillo).then(() => {
+                document.getElementById("form-nuevo-producto").reset();
+                document.getElementById("prod-id").value = "";
+                cerrarModalProducto();
+            });
+        });
+
+        // CREAR CATEGORÍA EN BASE DE DATOS
+        document.getElementById("form-nueva-categoria")?.addEventListener("submit", (e) => {
+            e.preventDefault();
+            const nombre = document.getElementById("cat-nombre").value;
+            push(ref(db, `${refSecurity}/categorias`), { nombre }).then(() => {
+                document.getElementById("form-nueva-categoria").reset();
+                cerrarModalCategoria();
+            });
         });
 
         window.cerrarSesion = function() {
@@ -214,6 +256,46 @@
             </div>
         </section>
     </main>
+
+    <!-- MODAL CATEGORÍA -->
+    <div id="modal-agregar-categoria" class="hidden fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
+        <div class="glass-panel w-full max-w-xs p-4 space-y-3">
+            <h3 class="text-sm font-black text-amber-500 border-b border-white/10 pb-2">📂 Nueva Categoría</h3>
+            <form id="form-nueva-categoria" class="space-y-2">
+                <input type="text" id="cat-nombre" required class="btn-sunken w-full p-2 text-xs outline-none" placeholder="Ej. Entradas, Sushi, Bebidas">
+                <div class="flex gap-2 pt-2">
+                    <button type="button" onclick="cerrarModalCategoria()" class="btn-raised w-1/2 py-2 text-xs font-bold">Cancelar</button>
+                    <button type="submit" class="btn-raised w-1/2 py-2 text-xs font-bold text-amber-500 bg-amber-500/20">Guardar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL AGREGAR / EDITAR PLATILLO -->
+    <div id="modal-agregar-producto" class="hidden fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
+        <div class="glass-panel w-full max-w-md p-5 space-y-3">
+            <h3 class="text-lg font-black text-amber-500 border-b border-black/10 dark:border-white/10 pb-2" id="modal-platillo-titulo">➕ Nuevo Platillo</h3>
+            <form id="form-nuevo-producto" class="space-y-2 text-xs md:text-sm">
+                <input type="hidden" id="prod-id">
+                <input type="text" id="prod-nombre" required class="btn-sunken w-full px-3 py-2 outline-none" placeholder="Nombre del Platillo">
+                <div class="grid grid-cols-2 gap-2">
+                    <input type="number" id="prod-precio" step="0.01" required class="btn-sunken w-full px-3 py-2 outline-none" placeholder="Precio ($ MXN)">
+                    <select id="prod-categoria" class="btn-sunken w-full px-3 py-2 outline-none bg-slate-900"></select>
+                </div>
+                <div class="grid grid-cols-1 gap-2">
+                    <label class="text-[10px] text-slate-400 font-bold">Enviar comanda a:</label>
+                    <select id="prod-cocina" class="btn-sunken w-full px-3 py-2 outline-none bg-slate-900"></select>
+                </div>
+                <input type="url" id="prod-foto" required class="btn-sunken w-full px-3 py-2 outline-none" placeholder="URL Foto Imagen">
+                <textarea id="prod-ingredientes" rows="2" class="btn-sunken w-full p-2 outline-none" placeholder="Ingredientes..."></textarea>
+                
+                <div class="flex gap-2 pt-2">
+                    <button type="button" onclick="cerrarModalProducto()" class="btn-raised w-1/2 py-2 font-bold">Cancelar</button>
+                    <button type="submit" class="btn-raised w-1/2 py-2 font-bold text-amber-500 bg-amber-500/20">Guardar</button>
+                </div>
+            </form>
+        </div>
+    </div>
 
     <!-- MODAL EDITAR PLATILLO DEL TICKET -->
     <div id="modal-editar-item-ticket" class="hidden fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
@@ -374,32 +456,60 @@
             renderizarProductos(window.menuCompleto);
         }
 
+        // 📂 RENDERIZAR CATEGORÍAS CON SHAKE Y BOTÓN AGREGAR
         function renderizarCategorias() {
             const container = document.getElementById("categories-bar");
+            const selectModal = document.getElementById("prod-categoria");
             if(!container) return;
+
             container.innerHTML = `<button onclick="filtrarCategoria('Todos')" class="btn-raised px-4 py-2 text-xs font-bold whitespace-nowrap">Todos</button>`;
+            if(selectModal) selectModal.innerHTML = "";
+
             const cats = window.categoriasMap || {};
             Object.keys(cats).forEach(id => {
                 const cat = cats[id];
+                const shakeClass = modoEdicionActivo ? 'modo-shake relative' : '';
+                const btnEdit = modoEdicionActivo ? `<button onclick="borrarCategoria('${id}')" class="absolute -top-1 -right-1 bg-rose-500 text-white rounded-full w-4 h-4 text-[9px] flex items-center justify-center z-20">✕</button>` : '';
+
                 container.innerHTML += `
-                    <button onclick="filtrarCategoria('${cat.nombre}')" class="btn-raised px-4 py-2 text-xs font-bold whitespace-nowrap">
-                        ${cat.nombre}
-                    </button>
+                    <div class="inline-block relative shrink-0">
+                        ${btnEdit}
+                        <button onclick="filtrarCategoria('${cat.nombre}')" class="btn-raised px-4 py-2 text-xs font-bold whitespace-nowrap ${shakeClass}">
+                            ${cat.nombre}
+                        </button>
+                    </div>
                 `;
+
+                if(selectModal) selectModal.innerHTML += `<option value="${cat.nombre}">${cat.nombre}</option>`;
             });
+
+            if (modoEdicionActivo) {
+                container.innerHTML += `<button onclick="abrirModalCategoria()" class="btn-raised px-3 py-2 text-xs font-bold text-amber-500 border-dashed border border-amber-500/50">+ Cat</button>`;
+            }
         }
 
+        // 🍣 RENDERIZAR PRODUCTOS CON SHAKE Y BOTONES EDICIÓN GERENTE
         function renderizarProductos(productos) {
             const grid = document.getElementById("products-grid");
             if(!grid) return;
             grid.innerHTML = "";
+
             if (!productos || Object.keys(productos).length === 0) {
                 grid.innerHTML = `<div class="col-span-full text-center py-12 text-slate-400 font-medium text-sm">No hay productos.</div>`;
             } else {
                 Object.keys(productos).forEach(id => {
                     const item = productos[id];
+                    const shakeClass = modoEdicionActivo ? 'modo-shake' : '';
+                    const botoneraEdicion = modoEdicionActivo ? `
+                        <div class="absolute top-1 right-1 flex gap-1 z-20">
+                            <button onclick="event.stopPropagation(); editarProducto('${id}')" class="bg-amber-500 text-black rounded-full w-6 h-6 text-xs font-bold flex items-center justify-center">✏️</button>
+                            <button onclick="event.stopPropagation(); borrarProducto('${id}')" class="bg-rose-500 text-white rounded-full w-6 h-6 text-xs font-bold flex items-center justify-center">✕</button>
+                        </div>
+                    ` : '';
+
                     grid.innerHTML += `
-                        <div onclick="agregarAlTicket('${item.nombre}', ${item.precio})" class="btn-raised p-3 flex flex-col justify-between h-32 md:h-40 cursor-pointer relative overflow-hidden group active:scale-95 transition-transform">
+                        <div onclick="agregarAlTicket('${item.nombre}', ${item.precio})" class="btn-raised p-3 flex flex-col justify-between h-32 md:h-40 cursor-pointer relative overflow-hidden group active:scale-95 transition-transform ${shakeClass}">
+                            ${botoneraEdicion}
                             <img src="${item.foto}" class="absolute inset-0 w-full h-full object-cover opacity-20 group-hover:opacity-40 transition-opacity" />
                             <span class="text-[10px] font-bold uppercase text-amber-500 z-10">${item.categoria}</span>
                             <div class="z-10">
@@ -409,6 +519,15 @@
                         </div>
                     `;
                 });
+            }
+
+            if (modoEdicionActivo) {
+                grid.innerHTML += `
+                    <div onclick="abrirModalProducto()" class="btn-raised p-3 flex flex-col items-center justify-center h-32 md:h-40 cursor-pointer text-amber-500 border-dashed border-2 border-amber-500/50 bg-amber-500/10 active:scale-95">
+                        <span class="text-3xl font-black">+</span>
+                        <span class="text-xs font-bold uppercase mt-1">Nuevo Platillo</span>
+                    </div>
+                `;
             }
         }
 
@@ -476,7 +595,47 @@
             document.getElementById("total-usd").innerText = `$${totalUSD.toFixed(2)} USD`;
         }
 
-        // FUNCIONES MODAL EDITAR PLATILLO TICKET
+        // FUNCIONES DE EDICIÓN / BORRADO DE BASE DE DATOS (MODO GERENTE)
+        function editarProducto(id) {
+            const item = window.menuCompleto[id];
+            if(!item) return;
+            document.getElementById("prod-id").value = id;
+            document.getElementById("prod-nombre").value = item.nombre;
+            document.getElementById("prod-precio").value = item.precio;
+            document.getElementById("prod-categoria").value = item.categoria;
+            document.getElementById("prod-cocina").value = item.cocina || 'general';
+            document.getElementById("prod-foto").value = item.foto;
+            document.getElementById("prod-ingredientes").value = item.ingredientes || '';
+            document.getElementById("modal-platillo-titulo").innerText = "✏️ Editar Platillo";
+            abrirModalProducto();
+        }
+
+        function borrarProducto(id) {
+            if(confirm("¿Eliminar este platillo permanentemente?")) {
+                import("https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js").then(({ ref, remove }) => {
+                    remove(ref(window.db, `${window.refSecurity}/menu/${id}`));
+                });
+            }
+        }
+
+        function borrarCategoria(id) {
+            if(confirm("¿Eliminar esta categoría?")) {
+                import("https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js").then(({ ref, remove }) => {
+                    remove(ref(window.db, `${window.refSecurity}/categorias/${id}`));
+                });
+            }
+        }
+
+        function abrirModalCategoria() { document.getElementById("modal-agregar-categoria").classList.remove("hidden"); }
+        function cerrarModalCategoria() { document.getElementById("modal-agregar-categoria").classList.add("hidden"); }
+        function abrirModalProducto() { document.getElementById("modal-agregar-producto").classList.remove("hidden"); }
+        function cerrarModalProducto() { 
+            document.getElementById("modal-agregar-producto").classList.add("hidden"); 
+            document.getElementById("prod-id").value = "";
+            document.getElementById("modal-platillo-titulo").innerText = "➕ Nuevo Platillo";
+        }
+
+        // FUNCIONES MODAL EDITAR PLATILLO DEL TICKET LOCAL
         function abrirModalEditarPlatilloTicket(id) {
             const item = ticketArray.find(i => i.id === id);
             if (!item) return;
@@ -723,7 +882,7 @@
                 secEfec.classList.add("hidden");
             } else {
                 secEfec.classList.remove("hidden");
-                document.getElementById("label-monto-recibido").innerText = metodo === 'pesos' ? 'Monto recibido ($MXN):' : 'Monto recibido ($ USD):';
+                document.getElementById("label-monto-recibido").innerText = metodo === 'pesos' ? 'Monto recibido ($ MXN):' : 'Monto recibido ($ USD):';
             }
             calcularCambioCobro();
         }
