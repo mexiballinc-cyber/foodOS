@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Food OS - KDS Cocina</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getDatabase, ref, onValue, update } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyDD5YehD45blgPdbDCUEcwSnqBjdA_eZlE",
+            authDomain: "food-os-system.firebaseapp.com",
+            databaseURL: "https://food-os-system-default-rtdb.firebaseio.com",
+            projectId: "food-os-system",
+            storageBucket: "food-os-system.firebasestorage.app",
+            messagingSenderId: "82413830766",
+            appId: "1:82413830766:web:23da82e27ead8b8f2d1c7f"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+
+        const currentSucursal = localStorage.getItem("foodos_business_token") || "cubito_sushi";
+        const usuarioActivo = localStorage.getItem("foodos_user_name") || "Cocinero";
+        const rawRole = (localStorage.getItem("foodos_role") || "cocina").toLowerCase();
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const areaTrabajo = urlParams.get('area') || localStorage.getItem("foodos_area") || "general";
+
+        const baseSucursal = `businesses/${currentSucursal}`;
+        const refSecurity = `${baseSucursal}/security_code`;
+        const refCorte = `${baseSucursal}/informacion_de_corte`;
+
+        window.db = db;
+        window.refCorte = refCorte;
+        window.ordenesPrevias = {};
+
+        document.addEventListener("DOMContentLoaded", () => {
+            onValue(ref(db, `${refSecurity}/config/nombreLocal`), (snapshot) => {
+                const nombreReal = snapshot.val();
+                const elemNombre = document.getElementById("nombre-sucursal");
+                if (elemNombre) {
+                    elemNombre.innerText = (nombreReal || currentSucursal.replace(/_/g, " ")).toUpperCase();
+                }
+            });
+
+            const elemCocinero = document.getElementById("nombre-cocinero");
+            if (elemCocinero) {
+                elemCocinero.innerText = `${usuarioActivo} (${areaTrabajo.toUpperCase()})`;
+            }
+
+            // Escuchar Menú para obtener ingredientes e imágenes de apoyo
+            onValue(ref(db, `${refSecurity}/menu`), (snapshot) => {
+                window.menuMap = snapshot.val() || {};
+            });
+
+            // Escuchar órdenes de la sucursal
+            onValue(ref(db, `${refCorte}/ordenes`), (snapshot) => {
+                const ordenes = snapshot.val() || {};
+                detectarCancelaciones(ordenes);
+                window.ordenesServidor = ordenes;
+                renderizarOrdenesCocina(ordenes);
+            });
+
+            iniciarNavegacionTeclado();
+        });
+
+        // Detectar si una orden fue cancelada desde Cajas
+        function detectarCancelaciones(nuevasOrdenes) {
+            Object.keys(window.ordenesPrevias).forEach(id => {
+                const ordAnt = window.ordenesPrevias[id];
+                const ordNueva = nuevasOrdenes[id];
+
+                if (ordAnt.estado === "activa" && (!ordNueva || ordNueva.estado === "cancelada")) {
+                    mostrarNotificacionCancelacion(ordAnt.detalle || id);
+                }
+            });
+            window.ordenesPrevias = JSON.parse(JSON.stringify(nuevasOrdenes || {}));
+        }
+
+        window.completarOrdenCocina = function(id) {
+            if (confirm("¿Marcar comanda como TERMINADA para el área de entregas/repas?")) {
+                update(ref(db, `${refCorte}/ordenes/${id}`), { 
+                    estado: "lista",
+                    horaTerminado: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                });
+            }
+        };
+
+        window.cerrarSesion = function() {
+            localStorage.clear();
+            window.location.href = "index.html";
+        };
+    </script>
+
+    <style>
+        :root {
+            --bg-gradient: linear-gradient(135deg, #0f172a 0%, #1e2640 100%);
+            --text-color: #f8fafc;
+            --glass-bg: rgba(255, 255, 255, 0.05);
+            --glass-border: rgba(255, 255, 255, 0.12);
+            --shadow-raised: 6px 6px 12px rgba(0, 0, 0, 0.4), -3px -3px 8px rgba(255, 255, 255, 0.05);
+            --shadow-sunken: inset 3px 3px 6px rgba(0, 0, 0, 0.5), inset -2px -2px 4px rgba(255, 255, 255, 0.05);
+            --input-bg: rgba(0, 0, 0, 0.4);
+        }
+
+        .light-mode {
+            --bg-gradient: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+            --text-color: #0f172a;
+            --glass-bg: rgba(255, 255, 255, 0.85);
+            --glass-border: rgba(203, 213, 225, 0.8);
+            --shadow-raised: 4px 4px 10px rgba(148, 163, 184, 0.25), -4px -4px 10px rgba(255, 255, 255, 0.9);
+            --shadow-sunken: inset 2px 2px 5px rgba(148, 163, 184, 0.25), inset -2px -2px 5px rgba(255, 255, 255, 0.9);
+            --input-bg: #f1f5f9;
+        }
+
+        body, .glass-panel, .btn-raised, .btn-sunken, header, main, section {
+            transition: background 0.3s ease, color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        body {
+            background: var(--bg-gradient);
+            color: var(--text-color);
+            font-family: system-ui, -apple-system, sans-serif;
+            min-height: 100vh;
+            user-select: none;
+        }
+
+        .glass-panel {
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: 20px;
+        }
+
+        .btn-raised {
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            box-shadow: var(--shadow-raised);
+            color: var(--text-color);
+        }
+
+        .btn-sunken {
+            background: var(--input-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            box-shadow: var(--shadow-sunken);
+            color: var(--text-color);
+        }
+
+        .card-orden-focused {
+            border: 2px solid #f59e0b !important;
+            box-shadow: 0 0 15px rgba(245, 158, 11, 0.4) !important;
+        }
+    </style>
+</head>
+<body class="p-2 md:p-4 flex flex-col gap-3 h-screen overflow-hidden">
+
+    <!-- HEADER -->
+    <header class="glass-panel h-14 md:h-16 px-4 md:px-6 flex justify-between items-center shrink-0">
+        <div class="flex items-center gap-2 md:gap-3 overflow-hidden">
+            <span class="text-xl md:text-2xl">🍳</span>
+            <div class="flex flex-col">
+                <h1 class="text-xs md:text-lg font-black truncate text-amber-500" id="nombre-sucursal">FOOD OS KDS</h1>
+                <span class="text-[10px] md:text-xs text-slate-400 font-bold" id="nombre-cocinero">Cocinero</span>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-2">
+            <button onclick="toggleTema()" id="btn-theme" class="w-9 h-9 md:w-11 md:h-11 btn-sunken flex items-center justify-center text-base md:text-lg">🌙</button>
+            <button onclick="cerrarSesion()" class="w-9 h-9 md:w-11 md:h-11 btn-sunken flex items-center justify-center text-base md:text-lg text-rose-500">✕</button>
+        </div>
+    </header>
+
+    <!-- NOTIFICACIÓN DE CANCELACIÓN FLOTANTE -->
+    <div id="toast-cancelacion" class="hidden fixed top-20 right-4 z-50 bg-rose-600 text-white p-4 rounded-2xl shadow-2xl flex items-center gap-3 animate-bounce">
+        <span class="text-2xl">⚠️</span>
+        <div>
+            <p class="font-black text-xs uppercase">¡Comanda Cancelada!</p>
+            <p class="text-xs font-semibold" id="toast-mensaje">Comanda #X fue cancelada por Cajas.</p>
+        </div>
+    </div>
+
+    <!-- PANTALLA PRINCIPAL DE COMANDAS -->
+    <main class="flex-1 glass-panel p-3 md:p-5 flex flex-col gap-3 overflow-hidden">
+        <div class="flex justify-between items-center border-b border-black/10 dark:border-white/10 pb-2 shrink-0">
+            <div class="flex items-center gap-2">
+                <h2 class="text-base md:text-xl font-black text-amber-500">Comandas en Preparación</h2>
+                <span class="text-[10px] bg-amber-500/20 text-amber-500 px-2 py-0.5 rounded-full font-bold" id="count-ordenes">0 ACTIVAS</span>
+            </div>
+            <p class="text-[10px] text-slate-400 font-bold hidden sm:block">🎮 Navega con WASD/Flechas | Click o ENTER en comanda para terminar | + para ingredientes</p>
+        </div>
+
+        <!-- CONTENEDOR DE BURBUJAS/TARJETAS DE COMANDAS -->
+        <div class="flex-1 overflow-y-auto pr-1">
+            <div id="grid-comandas-cocina" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4"></div>
+        </div>
+    </main>
+
+    <!-- MODAL INGREDIENTES / FICHA TÉCNICA (MODO ENTRENAMIENTO) -->
+    <div id="modal-ingredientes" class="hidden fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
+        <div class="glass-panel w-full max-w-sm p-5 space-y-4 text-center">
+            <div class="flex justify-between items-center border-b border-white/10 pb-2">
+                <h3 class="text-base font-black text-amber-500 truncate" id="ingrediente-nombre">Nombre del Platillo</h3>
+                <button onclick="cerrarModalIngredientes()" class="btn-sunken w-7 h-7 text-xs">✕</button>
+            </div>
+
+            <div class="w-full h-44 rounded-2xl overflow-hidden btn-sunken relative">
+                <img id="ingrediente-foto" src="" class="w-full h-full object-cover" alt="Platillo">
+            </div>
+
+            <div class="text-left space-y-1">
+                <p class="text-[10px] font-bold text-slate-400 uppercase">Ingredientes y Preparación:</p>
+                <div id="ingrediente-texto" class="btn-sunken p-3 text-xs font-semibold max-h-32 overflow-y-auto"></div>
+            </div>
+
+            <button onclick="cerrarModalIngredientes()" class="btn-raised w-full py-2.5 text-xs font-black text-amber-500 uppercase">Entendido</button>
+        </div>
+    </div>
+
+    <script>
+        let ordenesKeysFocus = [];
+        let indexFocusActual = -1;
+
+        function toggleTema() { 
+            document.body.classList.toggle("light-mode"); 
+        }
+
+        function renderizarOrdenesCocina(ordenes) {
+            const grid = document.getElementById("grid-comandas-cocina");
+            const elemCount = document.getElementById("count-ordenes");
+            if (!grid) return;
+
+            grid.innerHTML = "";
+            ordenesKeysFocus = [];
+            let activasCount = 0;
+
+            Object.keys(ordenes || {}).forEach((id, idx) => {
+                const ord = ordenes[id];
+                if (ord.estado === "activa") {
+                    activasCount++;
+                    ordenesKeysFocus.push(id);
+
+                    let itemsHTML = "";
+                    (ord.items || []).forEach(item => {
+                        const notaItem = item.nota ? `<span class="block text-[10px] text-amber-400 font-bold italic">⚠️ ${item.nota}</span>` : '';
+                        itemsHTML += `
+                            <div class="btn-sunken p-2 flex justify-between items-start text-xs my-1">
+                                <div class="flex-1 pr-1">
+                                    <span class="font-bold">${item.nombre}</span>
+                                    ${notaItem}
+                                </div>
+                                <button onclick="event.stopPropagation(); verIngredientesPlatillo('${item.nombre}')" class="btn-raised px-2 py-1 text-[10px] font-black text-amber-500 hover:scale-105 active:scale-95" title="Ver ingredientes">+</button>
+                            </div>
+                        `;
+                    });
+
+                    grid.innerHTML += `
+                        <div id="card-ord-${id}" onclick="completarOrdenCocina('${id}')" class="btn-raised p-4 flex flex-col justify-between h-auto cursor-pointer relative overflow-hidden transition-all hover:scale-[1.02] active:scale-95">
+                            <div>
+                                <div class="flex justify-between items-center border-b border-black/10 dark:border-white/10 pb-2 mb-2">
+                                    <span class="text-xs font-black uppercase text-amber-500 truncate max-w-[150px]">${ord.detalle}</span>
+                                    <span class="text-[10px] font-extrabold text-slate-400">${ord.fecha}</span>
+                                </div>
+                                <div class="space-y-1">${itemsHTML}</div>
+                            </div>
+
+                            <div class="mt-3 pt-2 border-t border-black/10 dark:border-white/10 flex justify-between items-center text-[10px]">
+                                <span class="font-bold text-sky-400 uppercase">${ord.tipo}</span>
+                                <span class="bg-emerald-500/20 text-emerald-400 px-2 py-1 rounded-lg font-black">TAP PARA TERMINAR</span>
+                            </div>
+                        </div>
+                    `;
+                }
+            });
+
+            elemCount.innerText = `${activasCount} ACTIVAS`;
+            if (activasCount === 0) {
+                grid.innerHTML = `
+                    <div class="col-span-full text-center py-20 text-slate-400">
+                        <span class="text-5xl block mb-2">👨‍🍳</span>
+                        <p class="font-bold text-sm">Sin comandas pendientes por preparar.</p>
+                    </div>
+                `;
+            }
+        }
+
+        function verIngredientesPlatillo(nombrePlatillo) {
+            const menu = window.menuMap || {};
+            let encontrado = null;
+
+            Object.keys(menu).forEach(k => {
+                if (menu[k].nombre.toLowerCase() === nombrePlatillo.toLowerCase()) {
+                    encontrado = menu[k];
+                }
+            });
+
+            document.getElementById("ingrediente-nombre").innerText = nombrePlatillo;
+            document.getElementById("ingrediente-foto").src = encontrado?.foto || "https://i.imgur.com/OscCey8.jpeg";
+            document.getElementById("ingrediente-texto").innerText = encontrado?.ingredientes || "No hay ingredientes detallados para este platillo.";
+
+            document.getElementById("modal-ingredientes").classList.remove("hidden");
+        }
+
+        function cerrarModalIngredientes() {
+            document.getElementById("modal-ingredientes").classList.add("hidden");
+        }
+
+        function mostrarNotificacionCancelacion(detalle) {
+            const toast = document.getElementById("toast-cancelacion");
+            document.getElementById("toast-mensaje").innerText = `Comanda "${detalle}" fue cancelada.`;
+            toast.classList.remove("hidden");
+            setTimeout(() => toast.classList.add("hidden"), 5000);
+        }
+
+        function iniciarNavegacionTeclado() {
+            window.addEventListener('keydown', (e) => {
+                if (ordenesKeysFocus.length === 0) return;
+
+                if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') {
+                    indexFocusActual = (indexFocusActual + 1) % ordenesKeysFocus.length;
+                    actualizarEnfoqueCard();
+                } else if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
+                    indexFocusActual = (indexFocusActual - 1 + ordenesKeysFocus.length) % ordenesKeysFocus.length;
+                    actualizarEnfoqueCard();
+                } else if (e.key === 'Enter' && indexFocusActual >= 0) {
+                    const idFocus = ordenesKeysFocus[indexFocusActual];
+                    if (idFocus) completarOrdenCocina(idFocus);
+                }
+            });
+        }
+
+        function actualizarEnfoqueCard() {
+            document.querySelectorAll(".card-orden-focused").forEach(el => el.classList.remove("card-orden-focused"));
+            const targetId = ordenesKeysFocus[indexFocusActual];
+            if (targetId) {
+                const elem = document.getElementById(`card-ord-${targetId}`);
+                if (elem) {
+                    elem.classList.add("card-orden-focused");
+                    elem.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                }
+            }
+        }
+    </script>
+</body>
+</html>
