@@ -52,7 +52,56 @@ function actualizarEstadoRed() {
 
 document.addEventListener('DOMContentLoaded', () => {
     actualizarEstadoRed();
+    verificarNegociosGuardados();
 });
+
+// MEMORIA MULTINEGOCIO LOCALSTORAGE
+function guardarNegocioEnHistorial(token, nombre) {
+    let historial = JSON.parse(localStorage.getItem('foodos_saved_businesses') || '{}');
+    historial[token] = { name: nombre, lastUsed: Date.now() };
+    localStorage.setItem('foodos_saved_businesses', JSON.stringify(historial));
+}
+
+function verificarNegociosGuardados() {
+    const historial = JSON.parse(localStorage.getItem('foodos_saved_businesses') || '{}');
+    const tokens = Object.keys(historial);
+    const container = document.getElementById('saved-businesses-list');
+    const secSaved = document.getElementById('saved-businesses-section');
+    const btnIniciar = document.getElementById('btn-iniciar');
+
+    if (tokens.length > 0 && container && secSaved) {
+        container.innerHTML = "";
+        tokens.forEach(tok => {
+            const biz = historial[tok];
+            container.innerHTML += `
+                <div onclick="seleccionarNegocioGuardado('${tok}')" class="saved-biz-card">
+                    <span class="biz-icon">🏪</span>
+                    <div class="biz-info">
+                        <p class="biz-name">${biz.name || tok}</p>
+                        <p class="biz-token">Token: ${tok}</p>
+                    </div>
+                    <button onclick="event.stopPropagation(); olvidarNegocioGuardado('${tok}')" class="btn-forget-biz" title="Olvidar local">✕</button>
+                </div>
+            `;
+        });
+        secSaved.classList.remove('hidden');
+        if (btnIniciar) btnIniciar.classList.add('hidden');
+    } else {
+        if (secSaved) secSaved.classList.add('hidden');
+        if (btnIniciar) btnIniciar.classList.remove('hidden');
+    }
+}
+
+function seleccionarNegocioGuardado(token) {
+    procesarTokenAcceso(token);
+}
+
+function olvidarNegocioGuardado(token) {
+    let historial = JSON.parse(localStorage.getItem('foodos_saved_businesses') || '{}');
+    delete historial[token];
+    localStorage.setItem('foodos_saved_businesses', JSON.stringify(historial));
+    verificarNegociosGuardados();
+}
 
 function abrirEscaner() {
     document.getElementById('welcome-screen').classList.add('hidden');
@@ -121,7 +170,10 @@ function procesarTokenAcceso(rawToken) {
                 }
 
                 currentBusinessData = data;
+                guardarNegocioEnHistorial(cleanToken, currentBusinessData.business_name || cleanToken);
+
                 document.getElementById('business-title').innerText = currentBusinessData.business_name;
+                document.getElementById('welcome-screen').classList.add('hidden');
                 document.getElementById('scanner-screen').classList.add('hidden');
                 document.getElementById('lockscreen').classList.remove('hidden');
                 
@@ -156,6 +208,7 @@ function autenticarGerentePorQR(qrCode) {
             if (negocioData) {
                 currentBusinessToken = negocioEncontradoKey;
                 currentBusinessData = negocioData;
+                guardarNegocioEnHistorial(negocioEncontradoKey, negocioData.business_name || negocioEncontradoKey);
                 alert(`👑 ¡Bienvenido Gerente ${negocioData.gerente.nombre}!\nAcceso concedido a Cajas/Panel Admin.`);
                 iniciarSesionUnica(negocioEncontradoKey, "admin", negocioData.gerente.nombre);
             } else {
@@ -213,6 +266,8 @@ function submitPin() {
 
         const areaTrabajo = (currentBusinessData.pins_area && currentBusinessData.pins_area[inputPin])
             ? currentBusinessData.pins_area[inputPin]
+            : (currentBusinessData.empleados && currentBusinessData.empleados[inputPin] && currentBusinessData.empleados[inputPin].area)
+            ? currentBusinessData.empleados[inputPin].area
             : "general";
 
         iniciarSesionUnica(currentBusinessToken, rol, userName, areaTrabajo);
@@ -225,7 +280,7 @@ function submitPin() {
 
 function iniciarSoporteTeclado() {
     const pinDisplay = document.getElementById('pin-display');
-    pinDisplay.setAttribute('readonly', 'true');
+    if (pinDisplay) pinDisplay.setAttribute('readonly', 'true');
 
     window.addEventListener('keydown', (e) => {
         if (document.getElementById('lockscreen').classList.contains('hidden')) return;
@@ -260,8 +315,6 @@ function iniciarSesionUnica(businessToken, userRole, userName, areaTrabajo = "ge
         localStorage.setItem('foodos_user_name', userName);
         localStorage.setItem('foodos_area', areaTrabajo);
 
-        escucharCierreDeSesionRemoto(businessToken, newSessionId);
-
         // DIRECCIONAMIENTO SEGÚN EL ROL
         if (userRole === 'caja' || userRole === 'admin' || userRole === 'gerente') {
             window.location.href = 'caja.html';
@@ -276,18 +329,4 @@ function iniciarSesionUnica(businessToken, userRole, userName, areaTrabajo = "ge
     .catch(err => {
         alert("⚠️ Error al registrar la sesión en el servidor.");
     });
-}
-
-function escucharCierreDeSesionRemoto(businessToken, mySessionId) {
-    setInterval(() => {
-        fetch(`${FIREBASE_URL}/businesses/${businessToken}/active_session_token.json`)
-            .then(res => res.json())
-            .then(remoteSessionId => {
-                if (remoteSessionId && remoteSessionId !== mySessionId) {
-                    alert("⚠️ ALERTA DE SEGURIDAD\n\nSe ha iniciado sesión desde otro dispositivo en este negocio. Cerrando sesión...");
-                    localStorage.clear();
-                    window.location.href = 'index.html';
-                }
-            });
-    }, 5000);
 }
