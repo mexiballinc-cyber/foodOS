@@ -77,7 +77,6 @@
             escucharOrdenesDomicilioYPuentes();
         });
 
-        // --- RASTREO GPS EN TIEMPO REAL ---
         function iniciarRastreoGPS() {
             if ("geolocation" in navigator) {
                 navigator.geolocation.watchPosition(
@@ -96,15 +95,12 @@
             }
         }
 
-        // --- ESCUCHAR ÓRDENES LOCALES Y PUENTES ---
         function escucharOrdenesDomicilioYPuentes() {
-            // 1. Escuchar órdenes locales
             onValue(ref(db, `${refBase}/informacion_de_corte/ordenes`), (snapshot) => {
                 window.ordenesLocales = snapshot.val() || {};
                 procesarYRenderizarOrdenes();
             });
 
-            // 2. Verificar si hay un puente activo con otra sucursal
             get(ref(db, `${refBase}/puente_repas_activo`)).then(snapshot => {
                 const tokenPuente = snapshot.val();
                 if (tokenPuente) {
@@ -127,7 +123,6 @@
             const ordenesLocales = window.ordenesLocales || {};
             const ordenesPuente = window.ordenesPuente || {};
 
-            // Mapeo unificado para saber el origen de cada orden
             window.todasLasOrdenesMap = {};
             Object.keys(ordenesLocales).forEach(k => {
                 window.todasLasOrdenesMap[k] = { ...ordenesLocales[k], esPuente: false };
@@ -151,15 +146,12 @@
                         ? `<span class="bg-sky-500/20 text-sky-400 px-2 py-0.5 rounded text-[9px] font-black">🌉 PUENTE</span>`
                         : '';
 
-                    // DISPONIBLES: Si no tiene repartidor y la orden está "activa" o "lista"
                     if (!ord.repartidorId && (ord.estado === "activa" || ord.estado === "lista")) {
                         dispCount++;
                         containerDisponibles.innerHTML += `
                             <div onclick="abrirDetalleOrden('${id}')" class="btn-raised p-4 space-y-2 relative overflow-hidden cursor-pointer hover:border-amber-500/50 transition-colors">
                                 <div class="flex justify-between items-center border-b border-white/10 pb-2">
-                                    <div class="flex items-center gap-1.5 truncate max-w-[70%]">
-                                        <span class="text-xs font-black text-amber-500 truncate">📍 ${ord.detalle}</span>
-                                    </div>
+                                    <span class="text-xs font-black text-amber-500 truncate max-w-[70%]">📍 ${ord.detalle}</span>
                                     <span class="text-[10px] text-slate-400 font-bold">${ord.fecha}</span>
                                 </div>
                                 <div class="flex justify-between items-center">
@@ -173,7 +165,6 @@
                         `;
                     }
 
-                    // MIS PEDIDOS: Asignados al repartidor activo
                     if (ord.repartidorId === repaId) {
                         misCount++;
                         const esEntregado = ord.estadoRepa === "entregado";
@@ -216,6 +207,18 @@
             document.getElementById("modal-fecha-orden").innerText = `Hora: ${ord.fecha}`;
             document.getElementById("modal-total-orden").innerText = `$${ord.total.toFixed(2)} MXN`;
 
+            const linkMaps = ord.mapsLink;
+            const containerMaps = document.getElementById("modal-contenedor-maps");
+            if (linkMaps && linkMaps.trim() !== "") {
+                containerMaps.innerHTML = `
+                    <a href="${linkMaps}" target="_blank" class="btn-raised block w-full py-2.5 text-center text-xs font-black text-sky-400 bg-sky-500/20 border border-sky-400/40 rounded-xl my-2">
+                        🗺️ ABRIR UBICACIÓN EN GOOGLE MAPS
+                    </a>
+                `;
+            } else {
+                containerMaps.innerHTML = `<p class="text-[10px] text-slate-400 italic text-center py-1">Sin enlace directo a Google Maps.</p>`;
+            }
+
             let itemsHTML = "";
             (ord.items || []).forEach(item => {
                 const notaTexto = item.nota ? `<span class="block text-[10px] text-amber-400 italic">✏️ ${item.nota}</span>` : '';
@@ -231,7 +234,6 @@
             });
             document.getElementById("modal-lista-platillos").innerHTML = itemsHTML;
 
-            // Botón Aceptar visible solo si no la tiene nadie asignado
             const btnAceptar = document.getElementById("btn-aceptar-modal");
             if (!ord.repartidorId) {
                 btnAceptar.classList.remove("hidden");
@@ -260,7 +262,7 @@
 
             runTransaction(ordenRef, (orden) => {
                 if (orden) {
-                    if (orden.repartidorId) return; // Ya fue tomado por otro
+                    if (orden.repartidorId) return;
                     orden.repartidorId = repaId;
                     orden.repartidorNombre = usuarioActivo;
                     orden.estadoRepa = "en_ruta";
@@ -324,9 +326,9 @@
         </section>
     </main>
 
-    <!-- MODAL DETALLE Y ACEPTAR ORDEN -->
+    <!-- MODAL DETALLE Y ACEPTAR ORDEN CON NAVEGACIÓN MAPS -->
     <div id="modal-detalle-pedido" class="hidden fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
-        <div class="glass-panel w-full max-w-sm p-5 space-y-4">
+        <div class="glass-panel w-full max-w-sm p-5 space-y-3">
             <div class="flex justify-between items-center border-b border-white/10 pb-2">
                 <h3 class="text-sm font-black text-amber-500 truncate max-w-[200px]" id="modal-titulo-detalle">📍 Info Orden</h3>
                 <button onclick="cerrarModalDetalle()" class="btn-sunken w-7 h-7 text-xs">✕</button>
@@ -337,9 +339,11 @@
                 <span id="modal-total-orden" class="text-lg font-black text-emerald-400">$0.00 MXN</span>
             </div>
 
+            <div id="modal-contenedor-maps"></div>
+
             <div class="space-y-1">
                 <p class="text-[10px] font-bold text-slate-400 uppercase">Detalle del Pedido:</p>
-                <div id="modal-lista-platillos" class="max-h-48 overflow-y-auto pr-1 space-y-1"></div>
+                <div id="modal-lista-platillos" class="max-h-40 overflow-y-auto pr-1 space-y-1"></div>
             </div>
 
             <div class="flex gap-2 pt-2">
