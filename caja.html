@@ -57,7 +57,6 @@
                 document.querySelectorAll(".solo-gerente").forEach(el => el.classList.remove("hidden"));
             }
 
-            // Iniciar monitoreo de repartidores para el admin
             escucharRastreoRepartidoresAdmin();
         });
 
@@ -72,14 +71,9 @@
         });
 
         onValue(ref(db, `${refSecurity}/cocinas`), (snapshot) => {
-            const data = snapshot.val() || {};
-            const selectCocina = document.getElementById("prod-cocina");
-            if(selectCocina) {
-                selectCocina.innerHTML = '<option value="general">Cocina Principal</option>';
-                Object.keys(data).forEach(k => {
-                    selectCocina.innerHTML += `<option value="${k}">${data[k].nombre}</option>`;
-                });
-            }
+            window.cocinasMap = snapshot.val() || {};
+            renderizarCocinasAdmin();
+            actualizarSelectsCocina();
         });
 
         onValue(ref(db, `${refSecurity}/clientes`), (snapshot) => {
@@ -134,14 +128,16 @@
             const rol = document.getElementById("emp-rol").value;
             const telefono = document.getElementById("emp-telefono").value.trim();
             const pin = document.getElementById("emp-pin").value.trim();
+            const area = rol === "cocina" ? document.getElementById("emp-area-cocina").value : "general";
 
             if (!nombre || !pin) return alert("Ingresa nombre y PIN obligatorio.");
 
-            const empData = { nombre, rol, telefono, pin };
+            const empData = { nombre, rol, telefono, pin, area };
             const empRefKey = idEmp || pin;
 
             set(ref(db, `${baseSucursal}/empleados/${empRefKey}`), empData).then(() => {
                 set(ref(db, `${baseSucursal}/pins/${pin}`), rol);
+                set(ref(db, `${baseSucursal}/pins_area/${pin}`), area);
                 alert("✅ Trabajador guardado exitosamente.");
                 document.getElementById("form-trabajador").reset();
                 document.getElementById("emp-id").value = "";
@@ -149,25 +145,89 @@
             });
         });
 
-        // --- MÓDULO ADMINISTRADOR: PUENTES DE REPARTIDORES ---
-        window.vincularPuenteRepartidores = function() {
-            const tokenSucursalDestino = prompt("🌉 Ingresa el token de la sucursal con la que deseas compartir repartidores:");
-            if (!tokenSucursalDestino) return;
+        // --- MÓDULO GESTIÓN DE COCINAS ---
+        window.renderizarCocinasAdmin = function() {
+            const container = document.getElementById("lista-cocinas-admin");
+            if (!container) return;
+            container.innerHTML = "";
+
+            const cocinas = window.cocinasMap || {};
+            if (Object.keys(cocinas).length === 0) {
+                container.innerHTML = `<p class="text-[10px] text-slate-400">Sin cocinas personalizadas.</p>`;
+                return;
+            }
+
+            Object.keys(cocinas).forEach(id => {
+                container.innerHTML += `
+                    <div class="btn-sunken p-1.5 flex justify-between items-center text-xs">
+                        <span class="font-bold text-amber-400">${cocinas[id].nombre}</span>
+                        <div class="flex gap-1">
+                            <button onclick="editarCocinaAdmin('${id}', '${cocinas[id].nombre}')" class="bg-amber-500 text-black px-1.5 py-0.5 rounded text-[10px] font-bold">✏️</button>
+                            <button onclick="eliminarCocinaAdmin('${id}')" class="bg-rose-500 text-white px-1.5 py-0.5 rounded text-[10px] font-bold">✕</button>
+                        </div>
+                    </div>
+                `;
+            });
+        };
+
+        window.actualizarSelectsCocina = function() {
+            const selectProd = document.getElementById("prod-cocina");
+            const selectEmpCocina = document.getElementById("emp-area-cocina");
             
+            let htmlOptions = '<option value="general">Cocina Principal</option>';
+            Object.keys(window.cocinasMap || {}).forEach(k => {
+                htmlOptions += `<option value="${k}">${window.cocinasMap[k].nombre}</option>`;
+            });
+
+            if (selectProd) selectProd.innerHTML = htmlOptions;
+            if (selectEmpCocina) selectEmpCocina.innerHTML = htmlOptions;
+        };
+
+        window.guardarCocinaAdmin = function() {
+            const nombre = document.getElementById("cocina-nombre-input").value.trim();
+            if (!nombre) return alert("Ingresa el nombre de la cocina.");
+            
+            push(ref(db, `${refSecurity}/cocinas`), { nombre }).then(() => {
+                document.getElementById("cocina-nombre-input").value = "";
+            });
+        };
+
+        window.editarCocinaAdmin = function(id, nombreActual) {
+            const nuevoNombre = prompt("Nuevo nombre para la cocina:", nombreActual);
+            if (nuevoNombre && nuevoNombre.trim() !== "") {
+                update(ref(db, `${refSecurity}/cocinas/${id}`), { nombre: nuevoNombre.trim() });
+            }
+        };
+
+        window.eliminarCocinaAdmin = function(id) {
+            if (confirm("¿Eliminar esta cocina del sistema?")) {
+                remove(ref(db, `${refSecurity}/cocinas/${id}`));
+            }
+        };
+
+        window.toggleAreaCocinaEmpleado = function() {
+            const rol = document.getElementById("emp-rol").value;
+            const divArea = document.getElementById("div-emp-area-cocina");
+            if (divArea) divArea.classList.toggle("hidden", rol !== "cocina");
+        };
+
+        // --- MÓDULO ADMINISTRADOR: PUENTES Y MONITOR GPS ---
+        window.vincularPuenteRepartidores = function() {
+            const tokenSucursalDestino = prompt("🌉 Ingresa el token de la sucursal destino:");
+            if (!tokenSucursalDestino) return;
             set(ref(db, `${baseSucursal}/puente_repas_activo`), tokenSucursalDestino.trim()).then(() => {
                 alert(`🌉 ¡Puente activado con la sucursal: ${tokenSucursalDestino}!`);
             });
         };
 
         window.desactivarPuenteRepartidores = function() {
-            if (confirm("¿Desactivar el puente de repartidores con otras sucursales?")) {
+            if (confirm("¿Desactivar el puente de repartidores?")) {
                 remove(ref(db, `${baseSucursal}/puente_repas_activo`)).then(() => {
                     alert("🚫 Puente de repartidores eliminado.");
                 });
             }
         };
 
-        // --- MÓDULO ADMINISTRADOR: MONITOR DE REPARTIDORES (🟢/🟡/⚪) ---
         function escucharRastreoRepartidoresAdmin() {
             onValue(ref(db, `${baseSucursal}/repartidores_rastreo`), (snapshot) => {
                 const repas = snapshot.val() || {};
@@ -187,12 +247,12 @@
 
             Object.keys(repas).forEach(id => {
                 const r = repas[id];
-                let colorPunto = "⚪"; // Inactivo por defecto
-                if (r.estadoColor === "verde") colorPunto = "🟢"; // En ruta
-                if (r.estadoColor === "amarillo") colorPunto = "🟡"; // Libre / Entregado
+                let colorPunto = "⚪";
+                if (r.estadoColor === "verde") colorPunto = "🟢";
+                if (r.estadoColor === "amarillo") colorPunto = "🟡";
 
                 const linkMaps = (r.lat && r.lng) 
-                    ? `<a href="https://maps.google.com/?q=${r.lat},${r.lng}" target="_blank" class="text-sky-400 font-bold underline">Ubicación GPS</a>`
+                    ? `<a href="https://maps.google.com/?q=${r.lat},${r.lng}" target="_blank" class="text-sky-400 font-bold underline">GPS</a>`
                     : "Sin GPS";
 
                 container.innerHTML += `
@@ -463,6 +523,11 @@
                 </div>
 
                 <div>
+                    <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Link Ubicación Google Maps (Opcional):</label>
+                    <input type="url" id="dom-maps-link" class="btn-sunken w-full p-2 text-xs outline-none" placeholder="https://maps.google.com/?q=...">
+                </div>
+
+                <div>
                     <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Referencias de la Casa:</label>
                     <textarea id="dom-notas" rows="2" class="btn-sunken w-full p-2 text-xs outline-none" placeholder="Ej. Casa negra con 5 perritas y un garaje..."></textarea>
                 </div>
@@ -475,7 +540,7 @@
         </div>
     </div>
 
-    <!-- MODAL VER ÓRDENES -->
+    <!-- MODAL VER ÓRDENES & HISTORIAL COMPLETO -->
     <div id="modal-ver-ordenes" class="hidden fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
         <div class="glass-panel w-full max-w-xl p-5 space-y-3">
             <div class="flex justify-between items-center border-b border-white/10 pb-2">
@@ -499,12 +564,35 @@
                 </select>
             </div>
 
-            <p class="text-[10px] text-slate-400 font-bold">💡 Haz doble clic en cualquier orden pendiente para cargarla al ticket.</p>
+            <p class="text-[10px] text-slate-400 font-bold">💡 Haz clic en 👁️ Ver para consultar el desglose completo de productos.</p>
             <div id="lista-ordenes-servidor" class="max-h-80 overflow-y-auto space-y-2 pr-1"></div>
         </div>
     </div>
 
-    <!-- MODAL DE COBRO -->
+    <!-- MODAL DETALLE INDIVIDUAL DE HISTORIAL -->
+    <div id="modal-detalle-historial" class="hidden fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
+        <div class="glass-panel w-full max-w-sm p-5 space-y-3">
+            <div class="flex justify-between items-center border-b border-white/10 pb-2">
+                <h3 class="text-base font-black text-amber-500" id="historial-titulo-orden">Detalle de Orden</h3>
+                <button onclick="cerrarModalDetalleHistorial()" class="btn-sunken w-7 h-7 text-xs">✕</button>
+            </div>
+
+            <div class="text-xs space-y-1">
+                <p id="historial-cliente" class="font-bold text-slate-300"></p>
+                <p id="historial-repa" class="font-bold text-sky-400"></p>
+                <p id="historial-totales" class="font-black text-emerald-400 text-sm"></p>
+            </div>
+
+            <div class="space-y-1">
+                <p class="text-[10px] font-bold text-slate-400 uppercase">Productos Consumidos:</p>
+                <div id="historial-items-lista" class="max-h-48 overflow-y-auto pr-1 space-y-1 text-xs"></div>
+            </div>
+
+            <button onclick="cerrarModalDetalleHistorial()" class="btn-raised w-full py-2 text-xs font-bold uppercase text-slate-300">Cerrar</button>
+        </div>
+    </div>
+
+    <!-- MODAL DE COBRO CON CÓDIGO DE REPARTIDOR -->
     <div id="modal-cobrar-orden" class="hidden fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
         <div class="glass-panel w-full max-w-sm p-5 space-y-4">
             <div class="flex justify-between items-center border-b border-white/10 pb-2">
@@ -532,6 +620,11 @@
                     <span>Cambio:</span>
                     <span class="text-xl font-black text-amber-500" id="cambio-monto-display">$0.00 MXN</span>
                 </div>
+            </div>
+
+            <div id="campo-codigo-repa" class="space-y-1 border-t border-white/10 pt-2">
+                <label class="block text-[10px] font-bold text-sky-400 uppercase">Código / NIP del Repartidor (Entregas):</label>
+                <input type="password" maxlength="4" id="cobro-repa-code" class="btn-sunken w-full p-2.5 text-center font-black tracking-widest text-sm outline-none" placeholder="PIN REPA (OPCIONAL/OBLIGATORIO)">
             </div>
 
             <button onclick="finalizarProcesoCobro()" class="btn-raised w-full py-3 text-xs font-black uppercase text-emerald-500">Completar Cobro</button>
@@ -564,7 +657,7 @@
             
             <div class="space-y-2 text-xs font-bold">
                 <button onclick="verTodasLasOrdenes()" class="btn-raised w-full p-3 text-left">📜 Ver Todas las Órdenes</button>
-                <button onclick="abrirModalTrabajadores()" class="solo-gerente hidden btn-raised w-full p-3 text-left text-amber-400">👥 Gestión de Trabajadores (Admin)</button>
+                <button onclick="abrirModalTrabajadores()" class="solo-gerente hidden btn-raised w-full p-3 text-left text-amber-400">👥 Gestión de Trabajadores y Cocinas (Admin)</button>
                 <button onclick="vincularPuenteRepartidores()" class="solo-gerente hidden btn-raised w-full p-3 text-left text-sky-400">🌉 Vincular Puente de Repas</button>
                 <button onclick="desactivarPuenteRepartidores()" class="solo-gerente hidden btn-raised w-full p-3 text-left text-rose-400">🚫 Desactivar Puente</button>
                 <button onclick="ejecutarCorteGeneral()" class="btn-raised w-full p-3 text-left text-emerald-400">💵 Realizar Corte General</button>
@@ -572,11 +665,11 @@
         </div>
     </div>
 
-    <!-- MODAL GESTIÓN DE TRABAJADORES Y MONITOR -->
+    <!-- MODAL GESTIÓN DE TRABAJADORES, COCINAS Y MONITOR -->
     <div id="modal-gestion-trabajadores" class="hidden fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
-        <div class="glass-panel w-full max-w-lg p-5 space-y-4">
+        <div class="glass-panel w-full max-w-lg p-5 space-y-4 max-h-[90vh] overflow-y-auto">
             <div class="flex justify-between items-center border-b border-white/10 pb-2">
-                <h3 class="text-base font-black text-amber-500">👥 Trabajadores & Monitor</h3>
+                <h3 class="text-base font-black text-amber-500">👥 Empleados, Cocinas & Monitor</h3>
                 <button onclick="cerrarModalTrabajadores()" class="btn-sunken w-7 h-7 text-xs">✕</button>
             </div>
 
@@ -585,12 +678,17 @@
                 <p class="font-bold text-amber-500 uppercase text-[10px]">Añadir / Modificar Empleado:</p>
                 <div class="grid grid-cols-2 gap-2">
                     <input type="text" id="emp-nombre" required class="btn-sunken p-2 outline-none" placeholder="Nombre completo">
-                    <select id="emp-rol" class="btn-sunken p-2 outline-none text-amber-500 font-bold">
+                    <select id="emp-rol" onchange="toggleAreaCocinaEmpleado()" class="btn-sunken p-2 outline-none text-amber-500 font-bold">
                         <option value="caja">Cajero / Caja</option>
                         <option value="cocina">Cocinero / Cocina</option>
                         <option value="repartidor">Repartidor / Repa</option>
                         <option value="admin">Administrador / Gerente</option>
                     </select>
+                </div>
+
+                <div id="div-emp-area-cocina" class="hidden">
+                    <label class="text-[10px] text-slate-400 font-bold">Asignar Área/Cocina a Cocinero:</label>
+                    <select id="emp-area-cocina" class="btn-sunken w-full p-2 outline-none text-xs text-amber-400 font-bold"></select>
                 </div>
 
                 <div class="grid grid-cols-2 gap-2">
@@ -601,14 +699,24 @@
                 <button type="submit" class="btn-raised w-full py-2 font-black text-emerald-400 uppercase">Guardar Empleado</button>
             </form>
 
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <!-- GESTIÓN DE COCINAS -->
+            <div class="glass-panel p-3 space-y-2 text-xs border-t border-white/10">
+                <p class="font-bold text-amber-500 uppercase text-[10px]">🍳 Gestión de Cocinas / Áreas:</p>
+                <div class="flex gap-2">
+                    <input type="text" id="cocina-nombre-input" class="btn-sunken p-2 text-xs w-full outline-none" placeholder="Nombre (ej. Barra Fría, Parrilla)">
+                    <button type="button" onclick="guardarCocinaAdmin()" class="btn-raised px-3 text-xs font-bold text-amber-500">+ Crear</button>
+                </div>
+                <div id="lista-cocinas-admin" class="max-h-24 overflow-y-auto space-y-1 text-xs"></div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
                 <div class="space-y-1">
                     <p class="text-[10px] font-bold text-slate-400 uppercase">Personal Registrado:</p>
-                    <div id="lista-trabajadores-admin" class="max-h-40 overflow-y-auto space-y-2 pr-1 text-xs"></div>
+                    <div id="lista-trabajadores-admin" class="max-h-36 overflow-y-auto space-y-2 pr-1 text-xs"></div>
                 </div>
                 <div class="space-y-1">
                     <p class="text-[10px] font-bold text-sky-400 uppercase">Monitor GPS Repas (🟢/🟡/⚪):</p>
-                    <div id="lista-repas-monitoreo" class="max-h-40 overflow-y-auto space-y-1 pr-1 text-xs"></div>
+                    <div id="lista-repas-monitoreo" class="max-h-36 overflow-y-auto space-y-1 pr-1 text-xs"></div>
                 </div>
             </div>
         </div>
@@ -912,6 +1020,7 @@
             document.getElementById("dom-colonia").value = c.colonia || "";
             document.getElementById("dom-calle").value = c.calle || "";
             document.getElementById("dom-numero").value = c.numero || "";
+            document.getElementById("dom-maps-link").value = c.mapsLink || "";
             document.getElementById("dom-notas").value = c.notas || "";
             document.getElementById("sugerencias-clientes").classList.add("hidden");
         }
@@ -927,24 +1036,26 @@
             const colonia = document.getElementById("dom-colonia").value.trim();
             const calle = document.getElementById("dom-calle").value.trim();
             const numero = document.getElementById("dom-numero").value.trim();
+            const mapsLink = document.getElementById("dom-maps-link").value.trim();
             const notas = document.getElementById("dom-notas").value.trim();
 
             if (!tel || !nombre) return alert("Ingresa al menos el teléfono y nombre del cliente.");
 
-            const clienteData = { telefono: tel, nombre, colonia, calle, numero, notas };
+            const clienteData = { telefono: tel, nombre, colonia, calle, numero, mapsLink, notas };
             import("https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js").then(({ ref, set }) => {
                 set(ref(window.db, `${window.refSecurity}/clientes/${tel}`), clienteData);
             });
 
             const detalleEnvio = `Domicilio: ${nombre} (${tel}) - ${calle} #${numero}, ${colonia}. Obs: ${notas}`;
-            guardarOrdenServidor(detalleEnvio);
+            guardarOrdenServidor(detalleEnvio, mapsLink);
         }
 
-        function guardarOrdenServidor(detalle) {
+        function guardarOrdenServidor(detalle, mapsLink = "") {
             const total = ticketArray.reduce((acc, item) => acc + item.precio, 0);
             const nuevaOrden = {
                 tipo: tipoOrdenSeleccionado,
                 detalle: detalle,
+                mapsLink: mapsLink,
                 items: ticketArray,
                 total: total,
                 totalUSD: total / window.tipoCambioUSD,
@@ -995,16 +1106,19 @@
                 if (pasaTipo && pasaEstado) {
                     count++;
                     let estadoBadge = `<span class="text-amber-500 font-bold">🟡 Pendiente</span>`;
-                    if (ord.estado === "pagada") estadoBadge = `<span class="text-emerald-500 font-bold">🟢 Cobrada</span>`;
+                    if (ord.estadoRepa === "en_ruta") estadoBadge = `<span class="text-sky-400 font-bold">🛵 En Ruta (${ord.repartidorNombre || 'Repa'})</span>`;
+                    if (ord.estadoRepa === "entregado") estadoBadge = `<span class="text-emerald-400 font-bold">📦 Entregado (${ord.repartidorNombre || 'Repa'})</span>`;
+                    if (ord.estado === "pagada") estadoBadge = `<span class="text-emerald-500 font-bold">💵 Cobrada</span>`;
                     if (ord.estado === "cancelada") estadoBadge = `<span class="text-rose-500 font-bold">🔴 Cancelada</span>`;
 
                     container.innerHTML += `
-                        <div ondblclick="abrirOpcionesOrden('${id}')" class="btn-sunken p-3 text-xs flex justify-between items-center cursor-pointer hover:bg-amber-500/10">
-                            <div>
+                        <div class="btn-sunken p-3 text-xs flex justify-between items-center my-1 hover:bg-amber-500/10">
+                            <div class="flex-1 pr-2">
                                 <p class="font-bold text-amber-500">[${ord.tipo.toUpperCase()}] ${ord.detalle} (${ord.fecha})</p>
-                                <p class="text-[10px] opacity-70">${ord.items.length} productos - Total: $${ord.total} MXN - ${estadoBadge}</p>
+                                <p class="text-[10px] opacity-70">${(ord.items||[]).length} productos - Total: $${ord.total} MXN - ${estadoBadge}</p>
                             </div>
                             <div class="flex gap-1">
+                                <button onclick="verDetalleOrdenHistorial('${id}')" class="btn-raised px-2 py-1 text-sky-400 font-bold">👁️ Ver</button>
                                 ${ord.estado === 'activa' ? `<button onclick="iniciarCobroServidor('${id}')" class="btn-raised px-2 py-1 text-emerald-500 font-bold">Cobrar</button>` : ''}
                                 ${ord.estado !== 'cancelada' ? `<button onclick="cancelarOrdenServidorConPin('${id}')" class="btn-raised px-2 py-1 text-rose-500 font-bold">✕</button>` : ''}
                             </div>
@@ -1016,20 +1130,36 @@
             if (count === 0) container.innerHTML = `<p class="text-xs text-slate-400 text-center py-4">No hay órdenes que coincidan con los filtros.</p>`;
         }
 
-        function abrirOpcionesOrden(id) {
+        window.verDetalleOrdenHistorial = function(id) {
             const ord = window.ordenesServidor[id];
             if (!ord) return;
-            if (ord.estado !== "activa") return alert("Solo se pueden volver a cargar al ticket las órdenes pendientes.");
 
-            if (confirm(`¿Deseas editar la comanda de ${ord.detalle}? (Cargará los ítems al ticket actual)`)) {
-                ticketArray = [...ord.items];
-                renderizarTicket();
-                import("https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js").then(({ ref, remove }) => {
-                    remove(ref(window.db, `${window.refCorte}/ordenes/${id}`));
-                    cerrarModalOrdenes();
-                });
-            }
-        }
+            document.getElementById("historial-titulo-orden").innerText = `[${ord.tipo.toUpperCase()}] ${ord.fecha}`;
+            document.getElementById("historial-cliente").innerText = ord.detalle;
+            document.getElementById("historial-repa").innerText = ord.repartidorNombre ? `🛵 Repartidor: ${ord.repartidorNombre}` : '';
+            document.getElementById("historial-totales").innerText = `Total: $${ord.total.toFixed(2)} MXN ($${(ord.totalUSD || (ord.total / 18)).toFixed(2)} USD)`;
+
+            let itemsHTML = "";
+            (ord.items || []).forEach(i => {
+                const nota = i.nota ? `<span class="block text-[10px] text-amber-400 italic">${i.nota}</span>` : '';
+                itemsHTML += `
+                    <div class="btn-sunken p-2 flex justify-between items-center">
+                        <div>
+                            <span class="font-bold">${i.nombre}</span>
+                            ${nota}
+                        </div>
+                        <span class="font-black text-amber-500">$${i.precio}</span>
+                    </div>
+                `;
+            });
+
+            document.getElementById("historial-items-lista").innerHTML = itemsHTML;
+            document.getElementById("modal-detalle-historial").classList.remove("hidden");
+        };
+
+        window.cerrarModalDetalleHistorial = function() {
+            document.getElementById("modal-detalle-historial").classList.add("hidden");
+        };
 
         function cancelarOrdenServidorConPin(id) {
             const pin = prompt("🔒 Ingrese PIN de Administrador/Gerente para cancelar orden:");
@@ -1062,6 +1192,7 @@
             document.getElementById("cobro-total-mxn").innerText = `$${total.toFixed(2)} MXN`;
             document.getElementById("cobro-total-usd").innerText = `$${(total / window.tipoCambioUSD).toFixed(2)} USD`;
             document.getElementById("monto-pagado-input").value = "";
+            document.getElementById("cobro-repa-code").value = "";
             document.getElementById("cambio-monto-display").innerText = "$0.00 MXN";
             setMetodoPago('pesos');
             document.getElementById("modal-cobrar-orden").classList.remove("hidden");
@@ -1107,9 +1238,13 @@
         function finalizarProcesoCobro() {
             if (!ordenActualProcesando) return;
 
+            const codigoRepaInput = document.getElementById("cobro-repa-code").value.trim();
+            let repaCodeFinal = ordenActualProcesando.repartidorId || codigoRepaInput || "N/A";
+
             const pagoData = {
                 total: ordenActualProcesando.total,
                 metodo: metodoPagoSeleccionado,
+                repartidorCode: repaCodeFinal,
                 timestamp: Date.now(),
                 fecha: new Date().toLocaleTimeString()
             };
@@ -1117,7 +1252,10 @@
             import("https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js").then(({ ref, push, update }) => {
                 push(ref(window.db, `${window.refCorte}/pagos`), pagoData).then(() => {
                     if (ordenActualProcesando.idKey) {
-                        update(ref(window.db, `${window.refCorte}/ordenes/${ordenActualProcesando.idKey}`), { estado: "pagada" });
+                        update(ref(window.db, `${window.refCorte}/ordenes/${ordenActualProcesando.idKey}`), { 
+                            estado: "pagada",
+                            repartidorId: repaCodeFinal
+                        });
                     }
                     alert("💵 ¡Cobro registrado con éxito!");
                     ticketArray = [];
@@ -1203,6 +1341,8 @@ ${platilloTop}
 
         function abrirModalTrabajadores() {
             renderizarListaEmpleadosAdmin();
+            renderizarCocinasAdmin();
+            actualizarSelectsCocina();
             document.getElementById("modal-gestion-trabajadores").classList.remove("hidden");
             cerrarModalMas();
         }
@@ -1228,7 +1368,7 @@ ${platilloTop}
                     <div class="btn-sunken p-2.5 flex justify-between items-center text-xs">
                         <div>
                             <p class="font-black text-amber-500">${emp.nombre} <span class="text-[10px] opacity-70">(${emp.rol.toUpperCase()})</span></p>
-                            <p class="text-[10px] opacity-70">📞 ${emp.telefono || 'Sin tel'} - PIN: ****</p>
+                            <p class="text-[10px] opacity-70">📞 ${emp.telefono || 'Sin tel'} - Área: ${emp.area || 'General'}</p>
                         </div>
                         <div class="flex gap-1">
                             <button onclick="editarEmpleadoAdmin('${id}')" class="bg-amber-500 text-black px-2 py-1 rounded font-bold">✏️</button>
@@ -1247,13 +1387,16 @@ ${platilloTop}
             document.getElementById("emp-rol").value = emp.rol;
             document.getElementById("emp-telefono").value = emp.telefono || "";
             document.getElementById("emp-pin").value = emp.pin;
+            toggleAreaCocinaEmpleado();
+            if (emp.area) document.getElementById("emp-area-cocina").value = emp.area;
         }
 
         function despedirEmpleadoAdmin(id, pin) {
-            if (confirm("¿Despedir/Eliminar a este trabajador del sistema de la sucursal?")) {
+            if (confirm("¿Despedir/Eliminar a este trabajador del sistema?")) {
                 import("https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js").then(({ ref, remove }) => {
                     remove(ref(window.db, `${window.baseSucursalRef}/empleados/${id}`));
                     remove(ref(window.db, `${window.baseSucursalRef}/pins/${pin}`));
+                    remove(ref(window.db, `${window.baseSucursalRef}/pins_area/${pin}`));
                     alert("🗑️ Empleado retirado del sistema.");
                 });
             }
