@@ -10,11 +10,19 @@
 </head>
 <body>
 
-    <!-- PANTALLA 1: BIENVENIDA -->
+    <!-- PANTALLA 1: BIENVENIDA & LISTA DE NEGOCIOS GUARDADOS -->
     <div id="welcome-screen" class="screen active">
         <div class="logo-container">
             <img src="https://i.imgur.com/U0xdLiV.png" alt="Food OS Logo" class="food-os-logo">
         </div>
+
+        <!-- SECCIÓN DINÁMICA DE NEGOCIOS GUARDADOS -->
+        <div id="saved-businesses-section" class="hidden glass-card saved-biz-wrapper">
+            <p class="subtitle" style="margin-bottom:10px; font-weight:bold; color:#ff8800;">🏢 MIS NEGOCIOS REGISTRADOS</p>
+            <div id="saved-businesses-list" class="saved-biz-container"></div>
+            <button class="btn-add-new-biz" onclick="abrirEscaner()">➕ Añadir Nuevo Negocio</button>
+        </div>
+
         <button id="btn-iniciar" onclick="abrirEscaner()">Iniciar</button>
     </div>
 
