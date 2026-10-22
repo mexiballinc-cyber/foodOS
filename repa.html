@@ -208,16 +208,31 @@
             document.getElementById("modal-total-orden").innerText = `$${ord.total.toFixed(2)} MXN`;
 
             const linkMaps = ord.mapsLink;
+            const cliente = ord.clienteData;
             const containerMaps = document.getElementById("modal-contenedor-maps");
+            
+            let htmlDireccionDetallada = "";
+
+            if (cliente) {
+                htmlDireccionDetallada += `
+                    <div class="btn-sunken p-2.5 space-y-1 text-xs border border-amber-500/30">
+                        <p class="font-bold text-amber-400">👤 Cliente: <span class="text-white">${cliente.nombre || 'N/A'}</span></p>
+                        <p class="font-bold text-sky-400">📞 Teléfono: <a href="tel:${cliente.telefono}" class="underline">${cliente.telefono || 'N/A'}</a></p>
+                        <p class="font-bold text-slate-300">🏠 Dirección: <span class="text-white">${cliente.calle || ''} #${cliente.numero || ''}, ${cliente.colonia || ''}</span></p>
+                        ${cliente.notas ? `<p class="text-[10px] text-amber-300 italic pt-1">📝 Obs: ${cliente.notas}</p>` : ''}
+                    </div>
+                `;
+            }
+
             if (linkMaps && linkMaps.trim() !== "") {
-                containerMaps.innerHTML = `
+                htmlDireccionDetallada += `
                     <a href="${linkMaps}" target="_blank" class="btn-raised block w-full py-2.5 text-center text-xs font-black text-sky-400 bg-sky-500/20 border border-sky-400/40 rounded-xl my-2">
                         🗺️ ABRIR UBICACIÓN EN GOOGLE MAPS
                     </a>
                 `;
-            } else {
-                containerMaps.innerHTML = `<p class="text-[10px] text-slate-400 italic text-center py-1">Sin enlace directo a Google Maps.</p>`;
             }
+
+            containerMaps.innerHTML = htmlDireccionDetallada || `<p class="text-[10px] text-slate-400 italic text-center py-1">Sin datos de dirección detallados.</p>`;
 
             let itemsHTML = "";
             (ord.items || []).forEach(item => {
@@ -326,7 +341,7 @@
         </section>
     </main>
 
-    <!-- MODAL DETALLE Y ACEPTAR ORDEN CON NAVEGACIÓN MAPS -->
+    <!-- MODAL DETALLE Y ACEPTAR ORDEN CON NAVEGACIÓN MAPS & DESGLOSE -->
     <div id="modal-detalle-pedido" class="hidden fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
         <div class="glass-panel w-full max-w-sm p-5 space-y-3">
             <div class="flex justify-between items-center border-b border-white/10 pb-2">
