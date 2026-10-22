@@ -89,7 +89,7 @@
             renderizarListaEmpleadosAdmin();
         });
 
-        // CREAR / EDITAR PLATILLO EN BASE DE DATOS
+        // CREAR / EDITAR PLATILLO
         document.getElementById("form-nuevo-producto")?.addEventListener("submit", (e) => {
             e.preventDefault();
             const id = document.getElementById("prod-id").value;
@@ -110,7 +110,7 @@
             });
         });
 
-        // CREAR CATEGORÍA EN BASE DE DATOS
+        // CREAR CATEGORÍA
         document.getElementById("form-nueva-categoria")?.addEventListener("submit", (e) => {
             e.preventDefault();
             const nombre = document.getElementById("cat-nombre").value;
@@ -120,7 +120,7 @@
             });
         });
 
-        // REGISTRAR O EDITAR TRABAJADOR
+        // REGISTRAR / EDITAR TRABAJADOR
         document.getElementById("form-trabajador")?.addEventListener("submit", (e) => {
             e.preventDefault();
             const idEmp = document.getElementById("emp-id").value;
@@ -141,11 +141,10 @@
                 alert("✅ Trabajador guardado exitosamente.");
                 document.getElementById("form-trabajador").reset();
                 document.getElementById("emp-id").value = "";
-                cerrarModalTrabajador();
+                cerrarModalTrabajadores();
             });
         });
 
-        // --- MÓDULO GESTIÓN DE COCINAS ---
         window.renderizarCocinasAdmin = function() {
             const container = document.getElementById("lista-cocinas-admin");
             if (!container) return;
@@ -211,7 +210,6 @@
             if (divArea) divArea.classList.toggle("hidden", rol !== "cocina");
         };
 
-        // --- MÓDULO ADMINISTRADOR: PUENTES Y MONITOR GPS ---
         window.vincularPuenteRepartidores = function() {
             const tokenSucursalDestino = prompt("🌉 Ingresa el token de la sucursal destino:");
             if (!tokenSucursalDestino) return;
@@ -558,13 +556,13 @@
 
                 <select id="filtro-estado-orden" onchange="renderizarOrdenesModal()" class="btn-sunken p-2 text-sky-400">
                     <option value="todos">Todos los Estados (Pendientes, Cobradas, Canceladas)</option>
-                    <option value="activa">Pendientes (Activas)</option>
+                    <option value="activa">Pendientes (Activas / Listas)</option>
                     <option value="pagada">Cobradas (Pagadas)</option>
                     <option value="cancelada">Canceladas</option>
                 </select>
             </div>
 
-            <p class="text-[10px] text-slate-400 font-bold">💡 Haz clic en 👁️ Ver para consultar el desglose completo de productos.</p>
+            <p class="text-[10px] text-slate-400 font-bold">💡 Clic en 👁️ Ver para consultar el desglose de productos consumidos.</p>
             <div id="lista-ordenes-servidor" class="max-h-80 overflow-y-auto space-y-2 pr-1"></div>
         </div>
     </div>
@@ -1047,15 +1045,18 @@
             });
 
             const detalleEnvio = `Domicilio: ${nombre} (${tel}) - ${calle} #${numero}, ${colonia}. Obs: ${notas}`;
-            guardarOrdenServidor(detalleEnvio, mapsLink);
+            
+            // Pasamos los datos estructurados del cliente para que Repartidores tenga desglose detallado
+            guardarOrdenServidor(detalleEnvio, mapsLink, clienteData);
         }
 
-        function guardarOrdenServidor(detalle, mapsLink = "") {
+        function guardarOrdenServidor(detalle, mapsLink = "", clienteData = null) {
             const total = ticketArray.reduce((acc, item) => acc + item.precio, 0);
             const nuevaOrden = {
                 tipo: tipoOrdenSeleccionado,
                 detalle: detalle,
                 mapsLink: mapsLink,
+                clienteData: clienteData,
                 items: ticketArray,
                 total: total,
                 totalUSD: total / window.tipoCambioUSD,
@@ -1101,11 +1102,17 @@
             Object.keys(ordenes).forEach(id => {
                 const ord = ordenes[id];
                 const pasaTipo = (filtroTipo === "todos" || ord.tipo === filtroTipo);
-                const pasaEstado = (filtroEstado === "todos" || ord.estado === filtroEstado);
+                
+                // CONSIDERAR PENDIENTES TANTOS "activa" COMO "lista"
+                const esPendiente = (ord.estado === "activa" || ord.estado === "lista");
+                const pasaEstado = (filtroEstado === "todos") || 
+                                   (filtroEstado === "activa" && esPendiente) || 
+                                   (filtroEstado === ord.estado);
 
                 if (pasaTipo && pasaEstado) {
                     count++;
                     let estadoBadge = `<span class="text-amber-500 font-bold">🟡 Pendiente</span>`;
+                    if (ord.estado === "lista") estadoBadge = `<span class="text-emerald-400 font-bold">🟢 Lista en Cocina</span>`;
                     if (ord.estadoRepa === "en_ruta") estadoBadge = `<span class="text-sky-400 font-bold">🛵 En Ruta (${ord.repartidorNombre || 'Repa'})</span>`;
                     if (ord.estadoRepa === "entregado") estadoBadge = `<span class="text-emerald-400 font-bold">📦 Entregado (${ord.repartidorNombre || 'Repa'})</span>`;
                     if (ord.estado === "pagada") estadoBadge = `<span class="text-emerald-500 font-bold">💵 Cobrada</span>`;
@@ -1119,7 +1126,7 @@
                             </div>
                             <div class="flex gap-1">
                                 <button onclick="verDetalleOrdenHistorial('${id}')" class="btn-raised px-2 py-1 text-sky-400 font-bold">👁️ Ver</button>
-                                ${ord.estado === 'activa' ? `<button onclick="iniciarCobroServidor('${id}')" class="btn-raised px-2 py-1 text-emerald-500 font-bold">Cobrar</button>` : ''}
+                                ${ord.estado !== 'pagada' && ord.estado !== 'cancelada' ? `<button onclick="iniciarCobroServidor('${id}')" class="btn-raised px-2 py-1 text-emerald-500 font-bold">Cobrar</button>` : ''}
                                 ${ord.estado !== 'cancelada' ? `<button onclick="cancelarOrdenServidorConPin('${id}')" class="btn-raised px-2 py-1 text-rose-500 font-bold">✕</button>` : ''}
                             </div>
                         </div>
