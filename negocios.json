@@ -62,6 +62,24 @@
         { "id": 301, "name": "Taco de Asada Mortal", "price": 35, "category": "Tacos" },
         { "id": 302, "name": "Vampiro con Fuego", "price": 50, "category": "Especiales" }
       ]
+    },
+    "TOKEN_HIDEKIANDPIZZA_04": {
+      "business_id": "hideki_sushi_pizza_01",
+      "business_name": "Hideki sushi 🍣 and pizza🍕",
+      "status": "active",
+      "active_session_token": null,
+      "gerente": {
+        "nombre": "Gerente Hideki",
+        "pin": "2019",
+        "qr_code": "QR_GERENTE_HIDEKI_2019"
+      },
+      "pins": {
+        "2019": "admin",
+        "1001": "caja",
+        "2002": "cocina",
+        "3003": "repartidor"
+      },
+      "menu": []
     }
   }
 }
