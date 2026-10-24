@@ -1,0 +1,1568 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Food OS - POS Cajas</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getDatabase, ref, push, onValue, set, remove, get, update } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyDD5YehD45blgPdbDCUEcwSnqBjdA_eZlE",
+            authDomain: "food-os-system.firebaseapp.com",
+            databaseURL: "https://food-os-system-default-rtdb.firebaseio.com",
+            projectId: "food-os-system",
+            storageBucket: "food-os-system.firebasestorage.app",
+            messagingSenderId: "82413830766",
+            appId: "1:82413830766:web:23da82e27ead8b8f2d1c7f"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+
+        const currentSucursal = localStorage.getItem("foodos_business_token") || localStorage.getItem("foodos_sucursal") || "cubito_sushi";
+        const usuarioActivo = localStorage.getItem("foodos_user_name") || localStorage.getItem("foodos_usuario") || "Cajero General"; 
+        const rawRole = (localStorage.getItem("foodos_role") || "").toLowerCase();
+        const esGerente = ["admin", "gerente", "owner", "administrador"].includes(rawRole) || localStorage.getItem("foodos_es_gerente") === "true";
+
+        const baseSucursal = `businesses/${currentSucursal}`;
+        const refSecurity = `${baseSucursal}/security_code`;
+        const refCorte = `${baseSucursal}/informacion_de_corte`;
+
+        window.db = db;
+        window.refSecurity = refSecurity;
+        window.refCorte = refCorte;
+        window.baseSucursalRef = baseSucursal;
+        window.esGerente = esGerente;
+        window.tipoCambioUSD = 18.00;
+
+        document.addEventListener("DOMContentLoaded", () => {
+            onValue(ref(db, `${refSecurity}/config/nombreLocal`), (snapshot) => {
+                const nombreReal = snapshot.val();
+                const elemNombre = document.getElementById("nombre-sucursal");
+                if (elemNombre) {
+                    elemNombre.innerText = (nombreReal || currentSucursal.replace(/_/g, " ")).toUpperCase();
+                }
+            });
+
+            const elemCajero = document.getElementById("nombre-cajero");
+            if (elemCajero) {
+                elemCajero.innerText = `${usuarioActivo} (${rawRole || 'caja'})`;
+            }
+
+            if (esGerente) {
+                document.querySelectorAll(".solo-gerente").forEach(el => el.classList.remove("hidden"));
+            }
+
+            escucharRastreoRepartidoresAdmin();
+        });
+
+        onValue(ref(db, `${refSecurity}/categorias`), (snapshot) => {
+            window.categoriasMap = snapshot.val() || {};
+            renderizarCategorias();
+        });
+
+        onValue(ref(db, `${refSecurity}/menu`), (snapshot) => {
+            window.menuCompleto = snapshot.val() || {};
+            renderizarProductos(window.menuCompleto);
+        });
+
+        onValue(ref(db, `${refSecurity}/cocinas`), (snapshot) => {
+            window.cocinasMap = snapshot.val() || {};
+            renderizarCocinasAdmin();
+            actualizarSelectsCocina();
+        });
+
+        onValue(ref(db, `${refSecurity}/clientes`), (snapshot) => {
+            window.clientesBaseDatos = snapshot.val() || {};
+        });
+
+        onValue(ref(db, `${refCorte}/ordenes`), (snapshot) => {
+            window.ordenesServidor = snapshot.val() || {};
+        });
+
+        onValue(ref(db, `${baseSucursal}/empleados`), (snapshot) => {
+            window.empleadosBaseDatos = snapshot.val() || {};
+            renderizarListaEmpleadosAdmin();
+        });
+
+        // CREAR / EDITAR PLATILLO
+        document.getElementById("form-nuevo-producto")?.addEventListener("submit", (e) => {
+            e.preventDefault();
+            const id = document.getElementById("prod-id").value;
+            const nuevoPlatillo = {
+                nombre: document.getElementById("prod-nombre").value,
+                precio: parseFloat(document.getElementById("prod-precio").value),
+                categoria: document.getElementById("prod-categoria").value,
+                cocina: document.getElementById("prod-cocina").value,
+                foto: document.getElementById("prod-foto").value,
+                ingredientes: document.getElementById("prod-ingredientes").value
+            };
+
+            const targetRef = id ? ref(db, `${refSecurity}/menu/${id}`) : push(ref(db, `${refSecurity}/menu`));
+            set(targetRef, nuevoPlatillo).then(() => {
+                document.getElementById("form-nuevo-producto").reset();
+                document.getElementById("prod-id").value = "";
+                cerrarModalProducto();
+            });
+        });
+
+        // CREAR CATEGORÍA
+        document.getElementById("form-nueva-categoria")?.addEventListener("submit", (e) => {
+            e.preventDefault();
+            const nombre = document.getElementById("cat-nombre").value;
+            push(ref(db, `${refSecurity}/categorias`), { nombre }).then(() => {
+                document.getElementById("form-nueva-categoria").reset();
+                cerrarModalCategoria();
+            });
+        });
+
+        // REGISTRAR / EDITAR TRABAJADOR
+        document.getElementById("form-trabajador")?.addEventListener("submit", (e) => {
+            e.preventDefault();
+            const idEmp = document.getElementById("emp-id").value;
+            const nombre = document.getElementById("emp-nombre").value.trim();
+            const rol = document.getElementById("emp-rol").value;
+            const telefono = document.getElementById("emp-telefono").value.trim();
+            const pin = document.getElementById("emp-pin").value.trim();
+            const area = rol === "cocina" ? document.getElementById("emp-area-cocina").value : "general";
+
+            if (!nombre || !pin) return alert("Ingresa nombre y PIN obligatorio.");
+
+            const empData = { nombre, rol, telefono, pin, area };
+            const empRefKey = idEmp || pin;
+
+            set(ref(db, `${baseSucursal}/empleados/${empRefKey}`), empData).then(() => {
+                set(ref(db, `${baseSucursal}/pins/${pin}`), rol);
+                set(ref(db, `${baseSucursal}/pins_area/${pin}`), area);
+                alert("✅ Trabajador guardado exitosamente.");
+                document.getElementById("form-trabajador").reset();
+                document.getElementById("emp-id").value = "";
+                cerrarModalTrabajadores();
+            });
+        });
+
+        window.renderizarCocinasAdmin = function() {
+            const container = document.getElementById("lista-cocinas-admin");
+            if (!container) return;
+            container.innerHTML = "";
+
+            const cocinas = window.cocinasMap || {};
+            if (Object.keys(cocinas).length === 0) {
+                container.innerHTML = `<p class="text-[10px] text-slate-400">Sin cocinas personalizadas.</p>`;
+                return;
+            }
+
+            Object.keys(cocinas).forEach(id => {
+                container.innerHTML += `
+                    <div class="btn-sunken p-1.5 flex justify-between items-center text-xs">
+                        <span class="font-bold text-amber-400">${cocinas[id].nombre}</span>
+                        <div class="flex gap-1">
+                            <button onclick="editarCocinaAdmin('${id}', '${cocinas[id].nombre}')" class="bg-amber-500 text-black px-1.5 py-0.5 rounded text-[10px] font-bold">✏️</button>
+                            <button onclick="eliminarCocinaAdmin('${id}')" class="bg-rose-500 text-white px-1.5 py-0.5 rounded text-[10px] font-bold">✕</button>
+                        </div>
+                    </div>
+                `;
+            });
+        };
+
+        window.actualizarSelectsCocina = function() {
+            const selectProd = document.getElementById("prod-cocina");
+            const selectEmpCocina = document.getElementById("emp-area-cocina");
+            
+            let htmlOptions = '<option value="general">Cocina Principal</option>';
+            Object.keys(window.cocinasMap || {}).forEach(k => {
+                htmlOptions += `<option value="${k}">${window.cocinasMap[k].nombre}</option>`;
+            });
+
+            if (selectProd) selectProd.innerHTML = htmlOptions;
+            if (selectEmpCocina) selectEmpCocina.innerHTML = htmlOptions;
+        };
+
+        window.guardarCocinaAdmin = function() {
+            const nombre = document.getElementById("cocina-nombre-input").value.trim();
+            if (!nombre) return alert("Ingresa el nombre de la cocina.");
+            
+            push(ref(db, `${refSecurity}/cocinas`), { nombre }).then(() => {
+                document.getElementById("cocina-nombre-input").value = "";
+            });
+        };
+
+        window.editarCocinaAdmin = function(id, nombreActual) {
+            const nuevoNombre = prompt("Nuevo nombre para la cocina:", nombreActual);
+            if (nuevoNombre && nuevoNombre.trim() !== "") {
+                update(ref(db, `${refSecurity}/cocinas/${id}`), { nombre: nuevoNombre.trim() });
+            }
+        };
+
+        window.eliminarCocinaAdmin = function(id) {
+            if (confirm("¿Eliminar esta cocina del sistema?")) {
+                remove(ref(db, `${refSecurity}/cocinas/${id}`));
+            }
+        };
+
+        window.toggleAreaCocinaEmpleado = function() {
+            const rol = document.getElementById("emp-rol").value;
+            const divArea = document.getElementById("div-emp-area-cocina");
+            if (divArea) divArea.classList.toggle("hidden", rol !== "cocina");
+        };
+
+        window.vincularPuenteRepartidores = function() {
+            const tokenSucursalDestino = prompt("🌉 Ingresa el token de la sucursal destino:");
+            if (!tokenSucursalDestino) return;
+            set(ref(db, `${baseSucursal}/puente_repas_activo`), tokenSucursalDestino.trim()).then(() => {
+                alert(`🌉 ¡Puente activado con la sucursal: ${tokenSucursalDestino}!`);
+            });
+        };
+
+        window.desactivarPuenteRepartidores = function() {
+            if (confirm("¿Desactivar el puente de repartidores?")) {
+                remove(ref(db, `${baseSucursal}/puente_repas_activo`)).then(() => {
+                    alert("🚫 Puente de repartidores eliminado.");
+                });
+            }
+        };
+
+        function escucharRastreoRepartidoresAdmin() {
+            onValue(ref(db, `${baseSucursal}/repartidores_rastreo`), (snapshot) => {
+                const repas = snapshot.val() || {};
+                renderizarMonitorRepasAdmin(repas);
+            });
+        }
+
+        function renderizarMonitorRepasAdmin(repas) {
+            const container = document.getElementById("lista-repas-monitoreo");
+            if (!container) return;
+            container.innerHTML = "";
+
+            if (Object.keys(repas).length === 0) {
+                container.innerHTML = `<p class="text-xs text-slate-400 text-center py-2">No hay repartidores activos.</p>`;
+                return;
+            }
+
+            Object.keys(repas).forEach(id => {
+                const r = repas[id];
+                let colorPunto = "⚪";
+                if (r.estadoColor === "verde") colorPunto = "🟢";
+                if (r.estadoColor === "amarillo") colorPunto = "🟡";
+
+                const linkMaps = (r.lat && r.lng) 
+                    ? `<a href="https://maps.google.com/?q=${r.lat},${r.lng}" target="_blank" class="text-sky-400 font-bold underline">GPS</a>`
+                    : "Sin GPS";
+
+                container.innerHTML += `
+                    <div class="btn-sunken p-2 flex justify-between items-center text-xs my-1">
+                        <span class="font-bold">${colorPunto} ${r.nombre}</span>
+                        <span class="text-[10px] text-slate-400">${linkMaps}</span>
+                    </div>
+                `;
+            });
+        }
+
+        window.cerrarSesion = function() {
+            localStorage.clear();
+            window.location.href = "index.html";
+        };
+    </script>
+
+    <style>
+        :root {
+            --bg-gradient: linear-gradient(135deg, #0f172a 0%, #1e2640 100%);
+            --text-color: #f8fafc;
+            --glass-bg: rgba(255, 255, 255, 0.05);
+            --glass-border: rgba(255, 255, 255, 0.12);
+            --shadow-raised: 6px 6px 12px rgba(0, 0, 0, 0.4), -3px -3px 8px rgba(255, 255, 255, 0.05);
+            --shadow-sunken: inset 3px 3px 6px rgba(0, 0, 0, 0.5), inset -2px -2px 4px rgba(255, 255, 255, 0.05);
+            --input-bg: rgba(0, 0, 0, 0.4);
+            --select-bg: #0f172a;
+        }
+
+        .light-mode {
+            --bg-gradient: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+            --text-color: #0f172a;
+            --glass-bg: rgba(255, 255, 255, 0.85);
+            --glass-border: rgba(203, 213, 225, 0.8);
+            --shadow-raised: 4px 4px 10px rgba(148, 163, 184, 0.25), -4px -4px 10px rgba(255, 255, 255, 0.9);
+            --shadow-sunken: inset 2px 2px 5px rgba(148, 163, 184, 0.25), inset -2px -2px 5px rgba(255, 255, 255, 0.9);
+            --input-bg: #f1f5f9;
+            --select-bg: #ffffff;
+        }
+
+        body, .glass-panel, .btn-raised, .btn-sunken, header, main, section, input, select, textarea {
+            transition: background 0.3s ease, color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        body {
+            background: var(--bg-gradient);
+            color: var(--text-color);
+            font-family: system-ui, -apple-system, sans-serif;
+            min-height: 100vh;
+            user-select: none;
+        }
+
+        .glass-panel {
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: 20px;
+        }
+
+        .btn-raised {
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            box-shadow: var(--shadow-raised);
+            color: var(--text-color);
+        }
+
+        .btn-sunken {
+            background: var(--input-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            box-shadow: var(--shadow-sunken);
+            color: var(--text-color);
+        }
+
+        select.btn-sunken {
+            background-color: var(--select-bg) !important;
+            color: var(--text-color) !important;
+        }
+
+        @keyframes iphoneShake {
+            0% { transform: rotate(0deg); }
+            25% { transform: rotate(-1.5deg); }
+            75% { transform: rotate(1.5deg); }
+            100% { transform: rotate(0deg); }
+        }
+
+        .modo-shake { animation: iphoneShake 0.25s infinite linear; }
+    </style>
+</head>
+<body class="p-2 md:p-4 flex flex-col gap-3 h-screen overflow-hidden">
+
+    <!-- HEADER -->
+    <header class="glass-panel h-14 md:h-16 px-4 md:px-6 flex justify-between items-center shrink-0">
+        <div class="flex items-center gap-2 md:gap-3 overflow-hidden">
+            <span class="text-xl md:text-2xl">👨‍🍳</span>
+            <div class="flex flex-col">
+                <h1 class="text-xs md:text-lg font-black truncate text-amber-500" id="nombre-sucursal">FOOD OS POS</h1>
+                <span class="text-[10px] md:text-xs text-slate-400 font-bold" id="nombre-cajero">Cajero</span>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-2">
+            <button id="btn-edit-mode" onclick="toggleModoGerente()" class="solo-gerente hidden w-9 h-9 md:w-11 md:h-11 btn-sunken flex items-center justify-center text-base md:text-lg text-amber-500 active:scale-90" title="Modo Edición Gerente">✏️</button>
+            <button onclick="toggleTema()" id="btn-theme" class="w-9 h-9 md:w-11 md:h-11 btn-sunken flex items-center justify-center text-base md:text-lg">🌙</button>
+            <button onclick="cerrarSesion()" class="w-9 h-9 md:w-11 md:h-11 btn-sunken flex items-center justify-center text-base md:text-lg text-rose-500">✕</button>
+        </div>
+    </header>
+
+    <!-- PANEL PRINCIPAL -->
+    <main class="flex-1 flex flex-col md:flex-row gap-3 overflow-hidden">
+        
+        <!-- COMANDA TICKET -->
+        <section class="glass-panel w-full md:w-5/12 h-1/2 md:h-full flex flex-col p-3 md:p-5 gap-2 shrink-0">
+            <div class="flex justify-between items-center border-b border-black/10 dark:border-white/10 pb-2">
+                <h2 class="text-base md:text-xl font-black">Info Orden</h2>
+                <span class="text-[10px] text-slate-400">Doble clic: Editar / Nota</span>
+            </div>
+
+            <div id="ticket-items" class="flex-1 overflow-y-auto space-y-2 pr-1"></div>
+            
+            <!-- TOTALES -->
+            <div class="border-t border-black/10 dark:border-white/10 pt-2">
+                <div class="flex justify-between items-baseline mb-1">
+                    <span class="text-xs uppercase font-bold opacity-70">Total MXN / USD</span>
+                    <div class="text-right">
+                        <div class="text-2xl md:text-3xl font-black text-emerald-500" id="total-mxn">$0.00</div>
+                        <div class="text-xs font-extrabold text-sky-400" id="total-usd">$0.00 USD</div>
+                    </div>
+                </div>
+
+                <!-- TIPO DE SERVICIO -->
+                <div class="grid grid-cols-3 gap-1 mb-2">
+                    <button id="btn-tipo-comedor" onclick="setTipoOrden('comedor')" class="btn-sunken py-1 text-[10px] font-black uppercase text-amber-500">Comedor</button>
+                    <button id="btn-tipo-llevar" onclick="setTipoOrden('llevar')" class="btn-sunken py-1 text-[10px] font-black uppercase">Llevar</button>
+                    <button id="btn-tipo-domicilio" onclick="setTipoOrden('domicilio')" class="btn-sunken py-1 text-[10px] font-black uppercase">Domicilio</button>
+                </div>
+                
+                <!-- BOTONERA DE ACCIÓN POS -->
+                <div class="grid grid-cols-4 gap-1.5 text-[10px] md:text-xs">
+                    <button onclick="cancelarTicketCompleto()" class="btn-raised py-2.5 font-black uppercase text-rose-500">Cancelar</button>
+                    <button onclick="abrirModalEnviarOrden()" class="btn-raised py-2.5 font-black uppercase text-sky-400">Enviar</button>
+                    <button onclick="cobrarDirectoTicket()" class="btn-raised py-2.5 font-black uppercase text-emerald-400">Pago</button>
+                    <button onclick="abrirModalMas()" class="btn-raised py-2.5 text-base font-black text-amber-500 bg-amber-500/10">+</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- PANEL PRODUCTOS & CATEGORÍAS -->
+        <section class="glass-panel w-full md:w-7/12 h-1/2 md:h-full flex flex-col p-3 md:p-5 gap-3 overflow-hidden">
+            <div class="flex items-center gap-2 overflow-x-auto pb-1 shrink-0" id="categories-bar"></div>
+
+            <div class="flex-1 overflow-y-auto pr-1">
+                <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 md:gap-3" id="products-grid"></div>
+            </div>
+        </section>
+    </main>
+
+    <!-- MODAL CATEGORÍA -->
+    <div id="modal-agregar-categoria" class="hidden fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
+        <div class="glass-panel w-full max-w-xs p-4 space-y-3">
+            <h3 class="text-sm font-black text-amber-500 border-b border-white/10 pb-2">📂 Nueva Categoría</h3>
+            <form id="form-nueva-categoria" class="space-y-2">
+                <input type="text" id="cat-nombre" required class="btn-sunken w-full p-2 text-xs outline-none" placeholder="Ej. Entradas, Sushi, Bebidas">
+                <div class="flex gap-2 pt-2">
+                    <button type="button" onclick="cerrarModalCategoria()" class="btn-raised w-1/2 py-2 text-xs font-bold">Cancelar</button>
+                    <button type="submit" class="btn-raised w-1/2 py-2 text-xs font-bold text-amber-500 bg-amber-500/20">Guardar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL AGREGAR / EDITAR PLATILLO -->
+    <div id="modal-agregar-producto" class="hidden fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
+        <div class="glass-panel w-full max-w-md p-5 space-y-3">
+            <h3 class="text-lg font-black text-amber-500 border-b border-black/10 dark:border-white/10 pb-2" id="modal-platillo-titulo">➕ Nuevo Platillo</h3>
+            <form id="form-nuevo-producto" class="space-y-2 text-xs md:text-sm">
+                <input type="hidden" id="prod-id">
+                <input type="text" id="prod-nombre" required class="btn-sunken w-full px-3 py-2 outline-none" placeholder="Nombre del Platillo">
+                <div class="grid grid-cols-2 gap-2">
+                    <input type="number" id="prod-precio" step="0.01" required class="btn-sunken w-full px-3 py-2 outline-none" placeholder="Precio ($ MXN)">
+                    <select id="prod-categoria" class="btn-sunken w-full px-3 py-2 outline-none"></select>
+                </div>
+                <div class="grid grid-cols-1 gap-2">
+                    <label class="text-[10px] text-slate-400 font-bold">Enviar comanda a:</label>
+                    <select id="prod-cocina" class="btn-sunken w-full px-3 py-2 outline-none"></select>
+                </div>
+                <input type="url" id="prod-foto" required class="btn-sunken w-full px-3 py-2 outline-none" placeholder="URL Foto Imagen">
+                <textarea id="prod-ingredientes" rows="2" class="btn-sunken w-full p-2 outline-none" placeholder="Ingredientes..."></textarea>
+                
+                <div class="flex gap-2 pt-2">
+                    <button type="button" onclick="cerrarModalProducto()" class="btn-raised w-1/2 py-2 font-bold">Cancelar</button>
+                    <button type="submit" class="btn-raised w-1/2 py-2 font-bold text-amber-500 bg-amber-500/20">Guardar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL CREAR PAQUETE / COMBO (NUEVO) -->
+    <div id="modal-agregar-paquete" class="hidden fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
+        <div class="glass-panel w-full max-w-md p-5 space-y-3">
+            <h3 class="text-base font-black text-amber-500 border-b border-white/10 pb-2">🍱 Crear Paquete / Combo Especial</h3>
+            <div class="space-y-2 text-xs">
+                <input type="text" id="paquete-nombre-input" class="btn-sunken w-full p-2.5 outline-none" placeholder="Nombre del Paquete (ej. Combo Pareja)">
+                <input type="number" step="0.01" id="paquete-precio-input" class="btn-sunken w-full p-2.5 outline-none" placeholder="Precio Total del Paquete ($ MXN)">
+                
+                <p class="font-bold text-slate-300 pt-1">Selecciona Platillos Incluidos:</p>
+                <div id="lista-platillos-paquete-seleccionar" class="max-h-40 overflow-y-auto space-y-1 btn-sunken p-2"></div>
+            </div>
+
+            <div class="flex gap-2 pt-2">
+                <button type="button" onclick="cerrarModalPaquete()" class="btn-raised w-1/2 py-2.5 text-xs font-bold text-rose-500">Cancelar</button>
+                <button type="button" onclick="agregarPaqueteAlTicket()" class="btn-raised w-1/2 py-2.5 text-xs font-black text-emerald-400 uppercase bg-emerald-500/20">Agregar Paquete</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL EDITAR PLATILLO DEL TICKET -->
+    <div id="modal-editar-item-ticket" class="hidden fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
+        <div class="glass-panel w-full max-w-sm p-5 space-y-4">
+            <div class="flex justify-between items-center border-b border-white/10 pb-2">
+                <h3 class="text-base font-black text-amber-500" id="edit-item-nombre">Editar Platillo</h3>
+                <button onclick="cerrarModalEditarItemTicket()" class="btn-sunken w-7 h-7 text-xs">✕</button>
+            </div>
+
+            <div class="space-y-3 text-xs">
+                <div>
+                    <label class="block font-bold text-slate-300 mb-1">Comentario o Modificación:</label>
+                    <input type="text" id="edit-item-nota" class="btn-sunken w-full p-2.5 outline-none" placeholder="Ej. Sin cebolla, extra picante...">
+                </div>
+
+                <div>
+                    <label class="block font-bold text-slate-300 mb-1">Cambiar por otro del mismo precio:</label>
+                    <select id="edit-item-reemplazo" class="btn-sunken w-full p-2.5 outline-none text-amber-500 font-bold"></select>
+                </div>
+            </div>
+
+            <div class="flex gap-2 pt-2">
+                <button onclick="eliminarItemDesdeModal()" class="btn-raised w-1/3 py-2.5 text-xs font-bold text-rose-500">Borrar</button>
+                <button onclick="guardarEdicionItemTicket()" class="btn-raised w-2/3 py-2.5 text-xs font-black text-emerald-400 uppercase">Guardar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL ENVIAR ORDEN -->
+    <div id="modal-enviar-orden" class="hidden fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
+        <div class="glass-panel w-full max-w-md p-5 space-y-4">
+            <div class="flex justify-between items-center border-b border-white/10 pb-2">
+                <h3 class="text-base font-black text-amber-500" id="titulo-modal-envio">🛵 Enviar Orden</h3>
+                <button onclick="cerrarModalEnvio()" class="btn-sunken w-7 h-7 text-xs">✕</button>
+            </div>
+
+            <div id="seccion-simple-envio" class="space-y-3 hidden">
+                <p class="text-xs font-bold">Identificación del Cliente o Mesa:</p>
+                <input type="text" id="envio-detalle-simple" class="btn-sunken w-full p-3 text-sm outline-none" placeholder="Ej. Mesa 4 o Cliente Juan">
+                <button onclick="confirmarEnvioSimple()" class="btn-raised w-full py-3 text-xs font-black uppercase text-emerald-400">Confirmar y Enviar</button>
+            </div>
+
+            <div id="seccion-domicilio-envio" class="space-y-3 hidden relative">
+                <div class="relative">
+                    <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Buscar por Teléfono:</label>
+                    <input type="tel" id="dom-telefono" oninput="buscarClientePorTelefono()" class="btn-sunken w-full p-2.5 text-sm outline-none" placeholder="Ingresa número de teléfono...">
+                    
+                    <div id="sugerencias-clientes" class="hidden absolute top-full left-0 w-full glass-panel border border-amber-500/30 rounded-xl mt-1 max-h-36 overflow-y-auto z-50 shadow-2xl"></div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-2 text-xs">
+                    <div>
+                        <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Cliente:</label>
+                        <input type="text" id="dom-nombre" class="btn-sunken w-full p-2 outline-none" placeholder="Nombre completo">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Colonia:</label>
+                        <input type="text" id="dom-colonia" class="btn-sunken w-full p-2 outline-none" placeholder="Colonia">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-3 gap-2 text-xs">
+                    <div class="col-span-2">
+                        <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Calle:</label>
+                        <input type="text" id="dom-calle" class="btn-sunken w-full p-2 outline-none" placeholder="Nombre de la calle">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Número Ext:</label>
+                        <input type="text" id="dom-numero" class="btn-sunken w-full p-2 outline-none" placeholder="# Casa">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Link Ubicación Google Maps (Opcional):</label>
+                    <input type="url" id="dom-maps-link" class="btn-sunken w-full p-2 text-xs outline-none" placeholder="https://maps.google.com/?q=...">
+                </div>
+
+                <div>
+                    <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Referencias de la Casa:</label>
+                    <textarea id="dom-notas" rows="2" class="btn-sunken w-full p-2 text-xs outline-none" placeholder="Ej. Casa negra con 5 perritas y un garaje..."></textarea>
+                </div>
+
+                <div class="flex gap-2 pt-1">
+                    <button type="button" onclick="cerrarModalEnvio()" class="btn-raised w-1/2 py-2.5 text-xs font-bold text-rose-500">Cancelar</button>
+                    <button type="button" onclick="confirmarEnvioDomicilio()" class="btn-raised w-1/2 py-2.5 text-xs font-black text-emerald-400 uppercase">GUARDAR Y ENVIAR</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL VER ÓRDENES & HISTORIAL COMPLETO -->
+    <div id="modal-ver-ordenes" class="hidden fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
+        <div class="glass-panel w-full max-w-xl p-5 space-y-3">
+            <div class="flex justify-between items-center border-b border-white/10 pb-2">
+                <h3 class="text-base font-black text-amber-500" id="titulo-modal-ordenes">📜 Historial General de Órdenes</h3>
+                <button onclick="cerrarModalOrdenes()" class="btn-sunken w-7 h-7 text-xs">✕</button>
+            </div>
+
+            <div class="grid grid-cols-2 gap-2 text-[10px] font-bold">
+                <select id="filtro-tipo-orden" onchange="renderizarOrdenesModal()" class="btn-sunken p-2 text-amber-500">
+                    <option value="todos">Todos los Tipos (Comedor, Llevar, Domicilio)</option>
+                    <option value="comedor">Comedor</option>
+                    <option value="llevar">Llevar</option>
+                    <option value="domicilio">Domicilio</option>
+                </select>
+
+                <select id="filtro-estado-orden" onchange="renderizarOrdenesModal()" class="btn-sunken p-2 text-sky-400">
+                    <option value="todos">Todos los Estados (Pendientes, Cobradas, Canceladas)</option>
+                    <option value="activa">Pendientes (Activas / Listas)</option>
+                    <option value="pagada">Cobradas (Pagadas)</option>
+                    <option value="cancelada">Canceladas</option>
+                </select>
+            </div>
+
+            <p class="text-[10px] text-slate-400 font-bold">💡 Clic en 👁️ Ver para consultar el desglose de productos consumidos.</p>
+            <div id="lista-ordenes-servidor" class="max-h-80 overflow-y-auto space-y-2 pr-1"></div>
+        </div>
+    </div>
+
+    <!-- MODAL DETALLE INDIVIDUAL DE HISTORIAL -->
+    <div id="modal-detalle-historial" class="hidden fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
+        <div class="glass-panel w-full max-w-sm p-5 space-y-3">
+            <div class="flex justify-between items-center border-b border-white/10 pb-2">
+                <h3 class="text-base font-black text-amber-500" id="historial-titulo-orden">Detalle de Orden</h3>
+                <button onclick="cerrarModalDetalleHistorial()" class="btn-sunken w-7 h-7 text-xs">✕</button>
+            </div>
+
+            <div class="text-xs space-y-1">
+                <p id="historial-cliente" class="font-bold text-slate-300"></p>
+                <p id="historial-repa" class="font-bold text-sky-400"></p>
+                <p id="historial-totales" class="font-black text-emerald-400 text-sm"></p>
+            </div>
+
+            <div class="space-y-1">
+                <p class="text-[10px] font-bold text-slate-400 uppercase">Productos Consumidos:</p>
+                <div id="historial-items-lista" class="max-h-48 overflow-y-auto pr-1 space-y-1 text-xs"></div>
+            </div>
+
+            <button onclick="cerrarModalDetalleHistorial()" class="btn-raised w-full py-2 text-xs font-bold uppercase text-slate-300">Cerrar</button>
+        </div>
+    </div>
+
+    <!-- MODAL DE COBRO CON CÓDIGO DE REPARTIDOR -->
+    <div id="modal-cobrar-orden" class="hidden fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
+        <div class="glass-panel w-full max-w-sm p-5 space-y-4">
+            <div class="flex justify-between items-center border-b border-white/10 pb-2">
+                <h3 class="text-base font-black text-emerald-400">💵 Cobrar Orden</h3>
+                <button onclick="cerrarModalCobro()" class="btn-sunken w-7 h-7 text-xs">✕</button>
+            </div>
+
+            <div class="text-center py-2 glass-panel rounded-xl">
+                <p class="text-xs text-slate-400 uppercase font-bold">Total a Cobrar</p>
+                <p class="text-3xl font-black text-emerald-500" id="cobro-total-mxn">$0.00 MXN</p>
+                <p class="text-xs font-bold text-sky-400" id="cobro-total-usd">$0.00 USD</p>
+            </div>
+
+            <div class="grid grid-cols-3 gap-1">
+                <button onclick="setMetodoPago('pesos')" id="btn-pago-pesos" class="btn-sunken py-2 text-xs font-bold text-amber-500">Efectivo MXN</button>
+                <button onclick="setMetodoPago('dolares')" id="btn-pago-dolares" class="btn-sunken py-2 text-xs font-bold">Efectivo USD</button>
+                <button onclick="setMetodoPago('tarjeta')" id="btn-pago-tarjeta" class="btn-sunken py-2 text-xs font-bold">Tarjeta</button>
+            </div>
+
+            <div id="campo-pago-efectivo" class="space-y-2">
+                <p class="text-xs font-bold text-slate-400" id="label-monto-recibido">Monto recibido ($ MXN):</p>
+                <input type="number" step="0.01" id="monto-pagado-input" oninput="calcularCambioCobro()" class="btn-sunken w-full p-3 text-lg font-black outline-none text-center" placeholder="0.00">
+                
+                <div class="flex justify-between items-center text-sm font-bold pt-1">
+                    <span>Cambio:</span>
+                    <span class="text-xl font-black text-amber-500" id="cambio-monto-display">$0.00 MXN</span>
+                </div>
+            </div>
+
+            <div id="campo-codigo-repa" class="space-y-1 border-t border-white/10 pt-2">
+                <label class="block text-[10px] font-bold text-sky-400 uppercase">Código / NIP del Repartidor (Entregas):</label>
+                <input type="password" maxlength="4" id="cobro-repa-code" class="btn-sunken w-full p-2.5 text-center font-black tracking-widest text-sm outline-none" placeholder="PIN REPA (OPCIONAL/OBLIGATORIO)">
+            </div>
+
+            <button onclick="finalizarProcesoCobro()" class="btn-raised w-full py-3 text-xs font-black uppercase text-emerald-500">Completar Cobro</button>
+        </div>
+    </div>
+
+    <!-- MODAL RESUMEN CORTE GENERAL -->
+    <div id="modal-resumen-corte" class="hidden fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
+        <div class="glass-panel w-full max-w-md p-5 space-y-3">
+            <div class="flex justify-between items-center border-b border-white/10 pb-2">
+                <h3 class="text-base font-black text-amber-500">📊 Reporte de Corte General</h3>
+                <button onclick="cerrarModalCorte()" class="btn-sunken w-7 h-7 text-xs">✕</button>
+            </div>
+
+            <textarea id="texto-resumen-corte" rows="14" readonly class="btn-sunken w-full p-3 text-xs font-mono outline-none"></textarea>
+
+            <div class="flex gap-2">
+                <button onclick="copiarCorteAlPortapapeles()" class="btn-raised w-full py-2.5 text-xs font-bold text-sky-400">📋 Copiar al Portapapeles</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL OPCIONES POS (+) CON BOTÓN DE DESCUENTO SOLO ADMIN -->
+    <div id="modal-menu-mas" class="hidden fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
+        <div class="glass-panel w-full max-w-sm p-5 space-y-3">
+            <div class="flex justify-between items-center border-b border-black/10 dark:border-white/10 pb-2">
+                <h3 class="text-base font-black text-amber-500">Opciones POS</h3>
+                <button onclick="cerrarModalMas()" class="btn-sunken w-7 h-7 text-xs">✕</button>
+            </div>
+            
+            <div class="space-y-2 text-xs font-bold">
+                <button onclick="verTodasLasOrdenes()" class="btn-raised w-full p-3 text-left">📜 Ver Todas las Órdenes</button>
+                <button onclick="abrirModalAplicarDescuentoAdmin()" class="solo-gerente hidden btn-raised w-full p-3 text-left text-amber-400">🏷️ Aplicar Descuento / Orden Gratis (Admin)</button>
+                <button onclick="abrirModalCrearPaquete()" class="btn-raised w-full p-3 text-left text-emerald-400">🍱 Crear Paquete / Combo</button>
+                <button onclick="abrirModalTrabajadores()" class="solo-gerente hidden btn-raised w-full p-3 text-left text-amber-400">👥 Gestión de Trabajadores y Cocinas (Admin)</button>
+                <button onclick="vincularPuenteRepartidores()" class="solo-gerente hidden btn-raised w-full p-3 text-left text-sky-400">🌉 Vincular Puente de Repas</button>
+                <button onclick="desactivarPuenteRepartidores()" class="solo-gerente hidden btn-raised w-full p-3 text-left text-rose-400">🚫 Desactivar Puente</button>
+                <button onclick="ejecutarCorteGeneral()" class="btn-raised w-full p-3 text-left text-emerald-400">💵 Realizar Corte General</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL GESTIÓN DE TRABAJADORES, COCINAS Y MONITOR -->
+    <div id="modal-gestion-trabajadores" class="hidden fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
+        <div class="glass-panel w-full max-w-lg p-5 space-y-4 max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center border-b border-white/10 pb-2">
+                <h3 class="text-base font-black text-amber-500">👥 Empleados, Cocinas & Monitor</h3>
+                <button onclick="cerrarModalTrabajadores()" class="btn-sunken w-7 h-7 text-xs">✕</button>
+            </div>
+
+            <form id="form-trabajador" class="glass-panel p-3 space-y-2 text-xs">
+                <input type="hidden" id="emp-id">
+                <p class="font-bold text-amber-500 uppercase text-[10px]">Añadir / Modificar Empleado:</p>
+                <div class="grid grid-cols-2 gap-2">
+                    <input type="text" id="emp-nombre" required class="btn-sunken p-2 outline-none" placeholder="Nombre completo">
+                    <select id="emp-rol" onchange="toggleAreaCocinaEmpleado()" class="btn-sunken p-2 outline-none text-amber-500 font-bold">
+                        <option value="caja">Cajero / Caja</option>
+                        <option value="cocina">Cocinero / Cocina</option>
+                        <option value="repartidor">Repartidor / Repa</option>
+                        <option value="admin">Administrador / Gerente</option>
+                    </select>
+                </div>
+
+                <div id="div-emp-area-cocina" class="hidden">
+                    <label class="text-[10px] text-slate-400 font-bold">Asignar Área/Cocina a Cocinero:</label>
+                    <select id="emp-area-cocina" class="btn-sunken w-full p-2 outline-none text-xs text-amber-400 font-bold"></select>
+                </div>
+
+                <div class="grid grid-cols-2 gap-2">
+                    <input type="tel" id="emp-telefono" class="btn-sunken p-2 outline-none" placeholder="Teléfono Móvil">
+                    <input type="password" id="emp-pin" required maxlength="4" class="btn-sunken p-2 outline-none text-center font-black tracking-widest" placeholder="PIN NIP (4 DÍGITOS)">
+                </div>
+
+                <button type="submit" class="btn-raised w-full py-2 font-black text-emerald-400 uppercase">Guardar Empleado</button>
+            </form>
+
+            <!-- GESTIÓN DE COCINAS -->
+            <div class="glass-panel p-3 space-y-2 text-xs border-t border-white/10">
+                <p class="font-bold text-amber-500 uppercase text-[10px]">🍳 Gestión de Cocinas / Áreas:</p>
+                <div class="flex gap-2">
+                    <input type="text" id="cocina-nombre-input" class="btn-sunken p-2 text-xs w-full outline-none" placeholder="Nombre (ej. Barra Fría, Parrilla)">
+                    <button type="button" onclick="guardarCocinaAdmin()" class="btn-raised px-3 text-xs font-bold text-amber-500">+ Crear</button>
+                </div>
+                <div id="lista-cocinas-admin" class="max-h-24 overflow-y-auto space-y-1 text-xs"></div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
+                <div class="space-y-1">
+                    <p class="text-[10px] font-bold text-slate-400 uppercase">Personal Registrado:</p>
+                    <div id="lista-trabajadores-admin" class="max-h-36 overflow-y-auto space-y-2 pr-1 text-xs"></div>
+                </div>
+                <div class="space-y-1">
+                    <p class="text-[10px] font-bold text-sky-400 uppercase">Monitor GPS Repas (🟢/🟡/⚪):</p>
+                    <div id="lista-repas-monitoreo" class="max-h-36 overflow-y-auto space-y-1 pr-1 text-xs"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let ticketArray = [];
+        let modoEdicionActivo = false;
+        let tipoOrdenSeleccionado = 'comedor';
+        let ordenActualProcesando = null;
+        let metodoPagoSeleccionado = 'pesos';
+        let platilloTicketEditandoId = null;
+        let montoDescuentoEspecial = 0;
+
+        function toggleTema() { document.body.classList.toggle("light-mode"); }
+
+        function toggleModoGerente() {
+            modoEdicionActivo = !modoEdicionActivo;
+            const btnEdit = document.getElementById("btn-edit-mode");
+            if (btnEdit) btnEdit.classList.toggle("bg-amber-500/30", modoEdicionActivo);
+            renderizarCategorias();
+            renderizarProductos(window.menuCompleto);
+        }
+
+        function renderizarCategorias() {
+            const container = document.getElementById("categories-bar");
+            const selectModal = document.getElementById("prod-categoria");
+            if(!container) return;
+
+            container.innerHTML = `<button onclick="filtrarCategoria('Todos')" class="btn-raised px-4 py-2 text-xs font-bold whitespace-nowrap">Todos</button>`;
+            if(selectModal) selectModal.innerHTML = "";
+
+            const cats = window.categoriasMap || {};
+            Object.keys(cats).forEach(id => {
+                const cat = cats[id];
+                const shakeClass = modoEdicionActivo ? 'modo-shake relative' : '';
+                const btnEdit = modoEdicionActivo ? `<button onclick="borrarCategoria('${id}')" class="absolute -top-1 -right-1 bg-rose-500 text-white rounded-full w-4 h-4 text-[9px] flex items-center justify-center z-20">✕</button>` : '';
+
+                container.innerHTML += `
+                    <div class="inline-block relative shrink-0">
+                        ${btnEdit}
+                        <button onclick="filtrarCategoria('${cat.nombre}')" class="btn-raised px-4 py-2 text-xs font-bold whitespace-nowrap ${shakeClass}">
+                            ${cat.nombre}
+                        </button>
+                    </div>
+                `;
+
+                if(selectModal) selectModal.innerHTML += `<option value="${cat.nombre}">${cat.nombre}</option>`;
+            });
+
+            if (modoEdicionActivo) {
+                container.innerHTML += `<button onclick="abrirModalCategoria()" class="btn-raised px-3 py-2 text-xs font-bold text-amber-500 border-dashed border border-amber-500/50">+ Cat</button>`;
+            }
+        }
+
+        function renderizarProductos(productos) {
+            const grid = document.getElementById("products-grid");
+            if(!grid) return;
+            grid.innerHTML = "";
+
+            if (!productos || Object.keys(productos).length === 0) {
+                grid.innerHTML = `<div class="col-span-full text-center py-12 text-slate-400 font-medium text-sm">No hay productos.</div>`;
+            } else {
+                Object.keys(productos).forEach(id => {
+                    const item = productos[id];
+                    const shakeClass = modoEdicionActivo ? 'modo-shake' : '';
+                    const botoneraEdicion = modoEdicionActivo ? `
+                        <div class="absolute top-1 right-1 flex gap-1 z-20">
+                            <button onclick="event.stopPropagation(); editarProducto('${id}')" class="bg-amber-500 text-black rounded-full w-6 h-6 text-xs font-bold flex items-center justify-center">✏️</button>
+                            <button onclick="event.stopPropagation(); borrarProducto('${id}')" class="bg-rose-500 text-white rounded-full w-6 h-6 text-xs font-bold flex items-center justify-center">✕</button>
+                        </div>
+                    ` : '';
+
+                    grid.innerHTML += `
+                        <div onclick="agregarAlTicket('${item.nombre}', ${item.precio})" class="btn-raised p-3 flex flex-col justify-between h-32 md:h-40 cursor-pointer relative overflow-hidden group active:scale-95 transition-transform ${shakeClass}">
+                            ${botoneraEdicion}
+                            <img src="${item.foto}" class="absolute inset-0 w-full h-full object-cover opacity-20 group-hover:opacity-40 transition-opacity" />
+                            <span class="text-[10px] font-bold uppercase text-amber-500 z-10">${item.categoria}</span>
+                            <div class="z-10">
+                                <p class="font-bold text-xs md:text-sm leading-tight">${item.nombre}</p>
+                                <p class="text-sm md:text-base font-black text-emerald-500 mt-1">$${item.precio} MXN</p>
+                            </div>
+                        </div>
+                    `;
+                });
+            }
+
+            if (modoEdicionActivo) {
+                grid.innerHTML += `
+                    <div onclick="abrirModalProducto()" class="btn-raised p-3 flex flex-col items-center justify-center h-32 md:h-40 cursor-pointer text-amber-500 border-dashed border-2 border-amber-500/50 bg-amber-500/10 active:scale-95">
+                        <span class="text-3xl font-black">+</span>
+                        <span class="text-xs font-bold uppercase mt-1">Nuevo Platillo</span>
+                    </div>
+                `;
+            }
+        }
+
+        function filtrarCategoria(nombreCat) {
+            if (nombreCat === 'Todos') return renderizarProductos(window.menuCompleto);
+            const filtrados = {};
+            Object.keys(window.menuCompleto || {}).forEach(key => {
+                if (window.menuCompleto[key].categoria === nombreCat) filtrados[key] = window.menuCompleto[key];
+            });
+            renderizarProductos(filtrados);
+        }
+
+        function agregarAlTicket(nombre, precio) {
+            ticketArray.push({ id: Date.now(), nombre, precio, nota: "" });
+            renderizarTicket();
+        }
+
+        function eliminarDelTicketLocal(id) {
+            ticketArray = ticketArray.filter(i => i.id !== id);
+            renderizarTicket();
+        }
+
+        function cancelarTicketCompleto() {
+            if(ticketArray.length === 0) return;
+            if(confirm("¿Limpiar la comanda actual?")) {
+                ticketArray = [];
+                montoDescuentoEspecial = 0;
+                renderizarTicket();
+            }
+        }
+
+        function setTipoOrden(tipo) {
+            tipoOrdenSeleccionado = tipo;
+            ['comedor', 'llevar', 'domicilio'].forEach(t => {
+                const btn = document.getElementById(`btn-tipo-${t}`);
+                if(btn) {
+                    btn.classList.toggle("text-amber-500", t === tipo);
+                    btn.classList.toggle("border-amber-500", t === tipo);
+                }
+            });
+            if (ticketArray.length === 0) verOrdenesPorTipo(tipo);
+        }
+
+        function renderizarTicket() {
+            const ticketContainer = document.getElementById("ticket-items");
+            ticketContainer.innerHTML = "";
+            let subtotal = 0;
+
+            ticketArray.forEach(item => {
+                subtotal += item.precio;
+                const notaTexto = item.nota ? `<span class="block text-[10px] text-amber-400 italic">✏️ ${item.nota}</span>` : '';
+
+                ticketContainer.innerHTML += `
+                    <div ondblclick="abrirModalEditarPlatilloTicket(${item.id})" class="flex flex-col btn-sunken p-2 text-xs cursor-pointer hover:bg-amber-500/10">
+                        <div class="flex justify-between items-center">
+                            <span class="font-bold truncate max-w-[140px]">${item.nombre}</span>
+                            <span class="font-black text-amber-500">$${item.precio}</span>
+                        </div>
+                        ${notaTexto}
+                    </div>
+                `;
+            });
+
+            let totalFinal = subtotal - montoDescuentoEspecial;
+            if (totalFinal < 0) totalFinal = 0;
+
+            if (montoDescuentoEspecial > 0) {
+                ticketContainer.innerHTML += `
+                    <div class="flex justify-between items-center btn-sunken p-2 text-xs border border-amber-500/50 bg-amber-500/10">
+                        <span class="font-bold text-amber-400">🏷️ Descuento Especial:</span>
+                        <span class="font-black text-rose-400">-$${montoDescuentoEspecial.toFixed(2)}</span>
+                    </div>
+                `;
+            }
+
+            const totalUSD = totalFinal / window.tipoCambioUSD;
+            document.getElementById("total-mxn").innerText = `$${totalFinal.toFixed(2)} MXN`;
+            document.getElementById("total-usd").innerText = `$${totalUSD.toFixed(2)} USD`;
+        }
+
+        // DESCUENTOS Y PAQUETES
+        window.abrirModalAplicarDescuentoAdmin = function() {
+            const descStr = prompt("🏷️ Ingresa monto del descuento en MXN (Ej. 20 o pon el total para dejar GRATIS):");
+            if (descStr !== null && !isNaN(descStr)) {
+                montoDescuentoEspecial = parseFloat(descStr);
+                renderizarTicket();
+                cerrarModalMas();
+            }
+        };
+
+        window.abrirModalCrearPaquete = function() {
+            const menu = window.menuCompleto || {};
+            const container = document.getElementById("lista-platillos-paquete-seleccionar");
+            container.innerHTML = "";
+
+            Object.keys(menu).forEach(k => {
+                const prod = menu[k];
+                container.innerHTML += `
+                    <label class="flex items-center gap-2 text-xs p-1 hover:bg-white/5 rounded cursor-pointer">
+                        <input type="checkbox" value="${prod.nombre}" data-precio="${prod.precio}" class="chk-paquete-item">
+                        <span>${prod.nombre} ($${prod.precio})</span>
+                    </label>
+                `;
+            });
+
+            document.getElementById("modal-agregar-paquete").classList.remove("hidden");
+            cerrarModalMas();
+        };
+
+        window.cerrarModalPaquete = function() {
+            document.getElementById("modal-agregar-paquete").classList.add("hidden");
+        };
+
+        window.agregarPaqueteAlTicket = function() {
+            const nombrePaq = document.getElementById("paquete-nombre-input").value.trim() || "Paquete Especial";
+            const precioPaq = parseFloat(document.getElementById("paquete-precio-input").value) || 0;
+
+            const seleccionados = Array.from(document.querySelectorAll(".chk-paquete-item:checked"));
+            if (seleccionados.length === 0) return alert("Selecciona al menos un platillo para el paquete.");
+
+            seleccionados.forEach(chk => {
+                ticketArray.push({
+                    id: Date.now() + Math.random(),
+                    nombre: `🍱 [${nombrePaq}] ${chk.value}`,
+                    precio: precioPaq / seleccionados.length,
+                    nota: `Combo: ${nombrePaq}`
+                });
+            });
+
+            renderizarTicket();
+            cerrarModalPaquete();
+        };
+
+        function editarProducto(id) {
+            const item = window.menuCompleto[id];
+            if(!item) return;
+            document.getElementById("prod-id").value = id;
+            document.getElementById("prod-nombre").value = item.nombre;
+            document.getElementById("prod-precio").value = item.precio;
+            document.getElementById("prod-categoria").value = item.categoria;
+            document.getElementById("prod-cocina").value = item.cocina || 'general';
+            document.getElementById("prod-foto").value = item.foto;
+            document.getElementById("prod-ingredientes").value = item.ingredientes || '';
+            document.getElementById("modal-platillo-titulo").innerText = "✏️ Editar Platillo";
+            abrirModalProducto();
+        }
+
+        function borrarProducto(id) {
+            if(confirm("¿Eliminar este platillo permanentemente?")) {
+                import("https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js").then(({ ref, remove }) => {
+                    remove(ref(window.db, `${window.refSecurity}/menu/${id}`));
+                });
+            }
+        }
+
+        function borrarCategoria(id) {
+            if(confirm("¿Eliminar esta categoría?")) {
+                import("https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js").then(({ ref, remove }) => {
+                    remove(ref(window.db, `${window.refSecurity}/categorias/${id}`));
+                });
+            }
+        }
+
+        function abrirModalCategoria() { document.getElementById("modal-agregar-categoria").classList.remove("hidden"); }
+        function cerrarModalCategoria() { document.getElementById("modal-agregar-categoria").classList.add("hidden"); }
+        function abrirModalProducto() { document.getElementById("modal-agregar-producto").classList.remove("hidden"); }
+        function cerrarModalProducto() { 
+            document.getElementById("modal-agregar-producto").classList.add("hidden"); 
+            document.getElementById("prod-id").value = "";
+            document.getElementById("modal-platillo-titulo").innerText = "➕ Nuevo Platillo";
+        }
+
+        function abrirModalEditarPlatilloTicket(id) {
+            const item = ticketArray.find(i => i.id === id);
+            if (!item) return;
+
+            platilloTicketEditandoId = id;
+            document.getElementById("edit-item-nombre").innerText = item.nombre;
+            document.getElementById("edit-item-nota").value = item.nota || "";
+
+            const selectReemplazo = document.getElementById("edit-item-reemplazo");
+            selectReemplazo.innerHTML = `<option value="">-- Dejar ${item.nombre} --</option>`;
+
+            const menu = window.menuCompleto || {};
+            Object.keys(menu).forEach(k => {
+                const prod = menu[k];
+                if (prod.precio === item.precio && prod.nombre !== item.nombre) {
+                    selectReemplazo.innerHTML += `<option value="${prod.nombre}">${prod.nombre} ($${prod.precio})</option>`;
+                }
+            });
+
+            document.getElementById("modal-editar-item-ticket").classList.remove("hidden");
+        }
+
+        function guardarEdicionItemTicket() {
+            const item = ticketArray.find(i => i.id === platilloTicketEditandoId);
+            if (!item) return;
+
+            const nuevaNota = document.getElementById("edit-item-nota").value.trim();
+            const nuevoNombre = document.getElementById("edit-item-reemplazo").value;
+
+            item.nota = nuevaNota;
+            if (nuevoNombre) item.nombre = nuevoNombre;
+
+            renderizarTicket();
+            cerrarModalEditarItemTicket();
+        }
+
+        function eliminarItemDesdeModal() {
+            if (platilloTicketEditandoId) {
+                eliminarDelTicketLocal(platilloTicketEditandoId);
+                cerrarModalEditarItemTicket();
+            }
+        }
+
+        function cerrarModalEditarItemTicket() {
+            document.getElementById("modal-editar-item-ticket").classList.add("hidden");
+            platilloTicketEditandoId = null;
+        }
+
+        function abrirModalEnviarOrden() {
+            if (ticketArray.length === 0) return alert("Añade productos a la comanda primero.");
+            const modal = document.getElementById("modal-enviar-orden");
+            const secSimple = document.getElementById("seccion-simple-envio");
+            const secDom = document.getElementById("seccion-domicilio-envio");
+
+            document.getElementById("titulo-modal-envio").innerText = `Orden: ${tipoOrdenSeleccionado.toUpperCase()}`;
+
+            if (tipoOrdenSeleccionado === "domicilio") {
+                secSimple.classList.add("hidden");
+                secDom.classList.remove("hidden");
+            } else {
+                secDom.classList.add("hidden");
+                secSimple.classList.remove("hidden");
+            }
+            modal.classList.remove("hidden");
+        }
+
+        function buscarClientePorTelefono() {
+            const telInput = document.getElementById("dom-telefono").value.trim();
+            const sugContainer = document.getElementById("sugerencias-clientes");
+            sugContainer.innerHTML = "";
+
+            if (telInput.length < 3) {
+                sugContainer.classList.add("hidden");
+                return;
+            }
+
+            const clientes = window.clientesBaseDatos || {};
+            let matchCount = 0;
+
+            Object.keys(clientes).forEach(id => {
+                const c = clientes[id];
+                if (c.telefono && c.telefono.includes(telInput)) {
+                    matchCount++;
+                    sugContainer.innerHTML += `
+                        <div onclick="cargarDatosCliente('${id}')" class="p-2 text-xs flex justify-between items-center cursor-pointer hover:bg-amber-500/20 border-b border-white/5 last:border-none">
+                            <span class="font-bold text-amber-500">📞 ${c.telefono} — ${c.nombre}</span>
+                            <span class="text-[10px] text-slate-400 font-semibold">${c.colonia || ''}</span>
+                        </div>
+                    `;
+                }
+            });
+
+            if (matchCount > 0) sugContainer.classList.remove("hidden");
+            else sugContainer.classList.add("hidden");
+        }
+
+        function cargarDatosCliente(id) {
+            const c = window.clientesBaseDatos[id];
+            if (!c) return;
+            document.getElementById("dom-telefono").value = c.telefono || "";
+            document.getElementById("dom-nombre").value = c.nombre || "";
+            document.getElementById("dom-colonia").value = c.colonia || "";
+            document.getElementById("dom-calle").value = c.calle || "";
+            document.getElementById("dom-numero").value = c.numero || "";
+            document.getElementById("dom-maps-link").value = c.mapsLink || "";
+            document.getElementById("dom-notas").value = c.notas || "";
+            document.getElementById("sugerencias-clientes").classList.add("hidden");
+        }
+
+        function confirmarEnvioSimple() {
+            const detalle = document.getElementById("envio-detalle-simple").value.trim() || tipoOrdenSeleccionado.toUpperCase();
+            guardarOrdenServidor(detalle);
+        }
+
+        function confirmarEnvioDomicilio() {
+            const tel = document.getElementById("dom-telefono").value.trim();
+            const nombre = document.getElementById("dom-nombre").value.trim();
+            const colonia = document.getElementById("dom-colonia").value.trim();
+            const calle = document.getElementById("dom-calle").value.trim();
+            const numero = document.getElementById("dom-numero").value.trim();
+            const mapsLink = document.getElementById("dom-maps-link").value.trim();
+            const notas = document.getElementById("dom-notas").value.trim();
+
+            if (!tel || !nombre) return alert("Ingresa al menos el teléfono y nombre del cliente.");
+
+            const clienteData = { telefono: tel, nombre, colonia, calle, numero, mapsLink, notas };
+            import("https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js").then(({ ref, set }) => {
+                set(ref(window.db, `${window.refSecurity}/clientes/${tel}`), clienteData);
+            });
+
+            const detalleEnvio = `Domicilio: ${nombre} (${tel}) - ${calle} #${numero}, ${colonia}. Obs: ${notas}`;
+            guardarOrdenServidor(detalleEnvio, mapsLink, clienteData);
+        }
+
+        function guardarOrdenServidor(detalle, mapsLink = "", clienteData = null) {
+            let subtotal = ticketArray.reduce((acc, item) => acc + item.precio, 0);
+            let totalFinal = subtotal - montoDescuentoEspecial;
+            if (totalFinal < 0) totalFinal = 0;
+
+            const nuevaOrden = {
+                tipo: tipoOrdenSeleccionado,
+                detalle: detalle,
+                mapsLink: mapsLink,
+                clienteData: clienteData,
+                items: ticketArray,
+                subtotal: subtotal,
+                descuento: montoDescuentoEspecial,
+                total: totalFinal,
+                totalUSD: totalFinal / window.tipoCambioUSD,
+                fecha: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                timestamp: Date.now(),
+                estado: "activa"
+            };
+
+            import("https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js").then(({ push, ref }) => {
+                push(ref(window.db, `${window.refCorte}/ordenes`), nuevaOrden).then(() => {
+                    alert(`✅ Orden enviada a ${tipoOrdenSeleccionado.toUpperCase()}`);
+                    ticketArray = [];
+                    montoDescuentoEspecial = 0;
+                    renderizarTicket();
+                    cerrarModalEnvio();
+                });
+            });
+        }
+
+        function verTodasLasOrdenes() {
+            document.getElementById("filtro-tipo-orden").value = "todos";
+            document.getElementById("filtro-estado-orden").value = "todos";
+            renderizarOrdenesModal();
+            document.getElementById("modal-ver-ordenes").classList.remove("hidden");
+            cerrarModalMas();
+        }
+
+        function verOrdenesPorTipo(tipo) {
+            document.getElementById("filtro-tipo-orden").value = tipo;
+            document.getElementById("filtro-estado-orden").value = "activa";
+            renderizarOrdenesModal();
+            document.getElementById("modal-ver-ordenes").classList.remove("hidden");
+        }
+
+        function renderizarOrdenesModal() {
+            const container = document.getElementById("lista-ordenes-servidor");
+            const filtroTipo = document.getElementById("filtro-tipo-orden").value;
+            const filtroEstado = document.getElementById("filtro-estado-orden").value;
+
+            container.innerHTML = "";
+            const ordenes = window.ordenesServidor || {};
+            let count = 0;
+
+            Object.keys(ordenes).forEach(id => {
+                const ord = ordenes[id];
+                const pasaTipo = (filtroTipo === "todos" || ord.tipo === filtroTipo);
+                
+                const esPendiente = (ord.estado === "activa" || ord.estado === "lista");
+                const pasaEstado = (filtroEstado === "todos") || 
+                                   (filtroEstado === "activa" && esPendiente) || 
+                                   (filtroEstado === ord.estado);
+
+                if (pasaTipo && pasaEstado) {
+                    count++;
+                    let estadoBadge = `<span class="text-amber-500 font-bold">🟡 Pendiente</span>`;
+                    if (ord.estado === "lista") estadoBadge = `<span class="text-emerald-400 font-bold">🟢 Lista en Cocina</span>`;
+                    if (ord.estadoRepa === "en_ruta") estadoBadge = `<span class="text-sky-400 font-bold">🛵 En Ruta (${ord.repartidorNombre || 'Repa'})</span>`;
+                    if (ord.estadoRepa === "entregado") estadoBadge = `<span class="text-emerald-400 font-bold">📦 Entregado (${ord.repartidorNombre || 'Repa'})</span>`;
+                    if (ord.estado === "pagada") estadoBadge = `<span class="text-emerald-500 font-bold">💵 Cobrada</span>`;
+                    if (ord.estado === "cancelada") estadoBadge = `<span class="text-rose-500 font-bold">🔴 Cancelada (${ord.razonCancelacion || 'Sin Razón'})</span>`;
+
+                    container.innerHTML += `
+                        <div class="btn-sunken p-3 text-xs flex justify-between items-center my-1 hover:bg-amber-500/10">
+                            <div class="flex-1 pr-2">
+                                <p class="font-bold text-amber-500">[${ord.tipo.toUpperCase()}] ${ord.detalle} (${ord.fecha})</p>
+                                <p class="text-[10px] opacity-70">${(ord.items||[]).length} productos - Total: $${ord.total} MXN - ${estadoBadge}</p>
+                            </div>
+                            <div class="flex gap-1">
+                                <button onclick="verDetalleOrdenHistorial('${id}')" class="btn-raised px-2 py-1 text-sky-400 font-bold">👁️ Ver</button>
+                                ${ord.estado !== 'pagada' && ord.estado !== 'cancelada' ? `<button onclick="iniciarCobroServidor('${id}')" class="btn-raised px-2 py-1 text-emerald-500 font-bold">Cobrar</button>` : ''}
+                                ${ord.estado !== 'cancelada' ? `<button onclick="cancelarOrdenServidorConPin('${id}')" class="btn-raised px-2 py-1 text-rose-500 font-bold">✕</button>` : ''}
+                            </div>
+                        </div>
+                    `;
+                }
+            });
+
+            if (count === 0) container.innerHTML = `<p class="text-xs text-slate-400 text-center py-4">No hay órdenes que coincidan con los filtros.</p>`;
+        }
+
+        window.verDetalleOrdenHistorial = function(id) {
+            const ord = window.ordenesServidor[id];
+            if (!ord) return;
+
+            document.getElementById("historial-titulo-orden").innerText = `[${ord.tipo.toUpperCase()}] ${ord.fecha}`;
+            document.getElementById("historial-cliente").innerText = ord.detalle;
+            document.getElementById("historial-repa").innerText = ord.repartidorNombre ? `🛵 Repartidor: ${ord.repartidorNombre}` : '';
+            document.getElementById("historial-totales").innerText = `Total: $${ord.total.toFixed(2)} MXN ($${(ord.totalUSD || (ord.total / 18)).toFixed(2)} USD)`;
+
+            let itemsHTML = "";
+            (ord.items || []).forEach(i => {
+                const nota = i.nota ? `<span class="block text-[10px] text-amber-400 italic">${i.nota}</span>` : '';
+                itemsHTML += `
+                    <div class="btn-sunken p-2 flex justify-between items-center">
+                        <div>
+                            <span class="font-bold">${i.nombre}</span>
+                            ${nota}
+                        </div>
+                        <span class="font-black text-amber-500">$${i.precio}</span>
+                    </div>
+                `;
+            });
+
+            document.getElementById("historial-items-lista").innerHTML = itemsHTML;
+            document.getElementById("modal-detalle-historial").classList.remove("hidden");
+        };
+
+        window.cerrarModalDetalleHistorial = function() {
+            document.getElementById("modal-detalle-historial").classList.add("hidden");
+        };
+
+        // CANCELACIÓN DE ÓRDENES CON VERIFICACIÓN DE TOKEN EN FIREBASE Y RAZÓN
+        async function cancelarOrdenServidorConPin(id) {
+            const pin = prompt("🔒 Ingrese PIN de Administrador/Gerente para cancelar orden:");
+            if (!pin || pin.trim() === "") return alert("❌ Debes ingresar un PIN.");
+
+            import("https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js").then(async ({ ref, get, update }) => {
+                const snapPins = await get(ref(window.db, `${window.baseSucursalRef}/pins/${pin}`));
+                const rolEncontrado = snapPins.val();
+
+                if (rolEncontrado === "admin" || rolEncontrado === "gerente" || window.esGerente) {
+                    const razon = prompt("📝 Ingresa la razón de la cancelación de esta orden:");
+                    const razonFinal = (razon && razon.trim() !== "") ? razon.trim() : "Cancelada sin razón especificada";
+
+                    update(ref(window.db, `${window.refCorte}/ordenes/${id}`), {
+                        estado: "cancelada",
+                        razonCancelacion: razonFinal,
+                        canceladoPorPin: pin
+                    }).then(() => {
+                        renderizarOrdenesModal();
+                        alert("🗑️ Orden cancelada con éxito y registrada en el sistema.");
+                    });
+                } else {
+                    alert("❌ PIN no pertenece a un Administrador de este negocio.");
+                }
+            });
+        }
+
+        function iniciarCobroServidor(id) {
+            ordenActualProcesando = window.ordenesServidor[id];
+            ordenActualProcesando.idKey = id;
+            cerrarModalOrdenes();
+            mostrarModalCobro(ordenActualProcesando.total);
+        }
+
+        function cobrarDirectoTicket() {
+            if (ticketArray.length === 0) return alert("No hay productos en el ticket.");
+            let subtotal = ticketArray.reduce((acc, item) => acc + item.precio, 0);
+            let totalFinal = subtotal - montoDescuentoEspecial;
+            if (totalFinal < 0) totalFinal = 0;
+
+            ordenActualProcesando = { directTicket: true, total: totalFinal, subtotal: subtotal, descuento: montoDescuentoEspecial, items: [...ticketArray] };
+            mostrarModalCobro(totalFinal);
+        }
+
+        function mostrarModalCobro(total) {
+            document.getElementById("cobro-total-mxn").innerText = `$${total.toFixed(2)} MXN`;
+            document.getElementById("cobro-total-usd").innerText = `$${(total / window.tipoCambioUSD).toFixed(2)} USD`;
+            document.getElementById("monto-pagado-input").value = "";
+            document.getElementById("cobro-repa-code").value = "";
+            document.getElementById("cambio-monto-display").innerText = "$0.00 MXN";
+            setMetodoPago('pesos');
+            document.getElementById("modal-cobrar-orden").classList.remove("hidden");
+        }
+
+        function setMetodoPago(metodo) {
+            metodoPagoSeleccionado = metodo;
+            const btnP = document.getElementById("btn-pago-pesos");
+            const btnD = document.getElementById("btn-pago-dolares");
+            const btnT = document.getElementById("btn-pago-tarjeta");
+            const secEfec = document.getElementById("campo-pago-efectivo");
+
+            btnP.classList.toggle("text-amber-500", metodo === 'pesos');
+            btnD.classList.toggle("text-amber-500", metodo === 'dolares');
+            btnT.classList.toggle("text-amber-500", metodo === 'tarjeta');
+
+            if (metodo === 'tarjeta') {
+                secEfec.classList.add("hidden");
+            } else {
+                secEfec.classList.remove("hidden");
+                document.getElementById("label-monto-recibido").innerText = metodo === 'pesos' ? 'Monto recibido ($ MXN):' : 'Monto recibido ($ USD):';
+            }
+            calcularCambioCobro();
+        }
+
+        function calcularCambioCobro() {
+            if (!ordenActualProcesando) return;
+            const totalMXN = ordenActualProcesando.total;
+            const pagoInput = parseFloat(document.getElementById("monto-pagado-input").value) || 0;
+            let cambioMXN = 0;
+
+            if (metodoPagoSeleccionado === 'pesos') {
+                cambioMXN = pagoInput - totalMXN;
+            } else if (metodoPagoSeleccionado === 'dolares') {
+                const pagoEnPesos = pagoInput * window.tipoCambioUSD;
+                cambioMXN = pagoEnPesos - totalMXN;
+            }
+
+            const elemCambio = document.getElementById("cambio-monto-display");
+            elemCambio.innerText = cambioMXN < 0 ? "$0.00 MXN" : `$${cambioMXN.toFixed(2)} MXN`;
+        }
+
+        // VALIDACIÓN DE CÓDIGO DE REPARTIDOR EN NEGOCIO LOCAL O PUENTE
+        async function finalizarProcesoCobro() {
+            if (!ordenActualProcesando) return;
+
+            const codigoRepaInput = document.getElementById("cobro-repa-code").value.trim();
+            let repaCodeFinal = ordenActualProcesando.repartidorId || codigoRepaInput;
+
+            if (repaCodeFinal && repaCodeFinal !== "N/A") {
+                import("https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js").then(async ({ ref, get, push, update }) => {
+                    const snapLocal = await get(ref(window.db, `${window.baseSucursalRef}/pins/${repaCodeFinal}`));
+                    let esValido = (snapLocal.val() === "repartidor" || snapLocal.val() === "repa");
+
+                    if (!esValido) {
+                        const snapPuente = await get(ref(window.db, `${window.baseSucursalRef}/puente_repas_activo`));
+                        const tokenPuente = snapPuente.val();
+                        if (tokenPuente) {
+                            const snapRepaPuente = await get(ref(window.db, `businesses/${tokenPuente}/pins/${repaCodeFinal}`));
+                            esValido = (snapRepaPuente.val() === "repartidor" || snapRepaPuente.val() === "repa");
+                        }
+                    }
+
+                    if (!esValido && codigoRepaInput !== "") {
+                        return alert("❌ El NIP del repartidor ingresado no existe en este negocio ni en su puente activo.");
+                    }
+
+                    completarRegistroPagoBaseDatos(repaCodeFinal || "N/A");
+                });
+            } else {
+                completarRegistroPagoBaseDatos("N/A");
+            }
+        }
+
+        function completarRegistroPagoBaseDatos(repaCodeFinal) {
+            const pagoData = {
+                total: ordenActualProcesando.total,
+                descuento: ordenActualProcesando.descuento || 0,
+                metodo: metodoPagoSeleccionado,
+                repartidorCode: repaCodeFinal,
+                timestamp: Date.now(),
+                fecha: new Date().toLocaleTimeString()
+            };
+
+            import("https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js").then(({ ref, push, update }) => {
+                push(ref(window.db, `${window.refCorte}/pagos`), pagoData).then(() => {
+                    if (ordenActualProcesando.idKey) {
+                        update(ref(window.db, `${window.refCorte}/ordenes/${ordenActualProcesando.idKey}`), { 
+                            estado: "pagada",
+                            repartidorId: repaCodeFinal
+                        });
+                    }
+                    alert("💵 ¡Cobro registrado con éxito!");
+                    ticketArray = [];
+                    montoDescuentoEspecial = 0;
+                    renderizarTicket();
+                    cerrarModalCobro();
+                });
+            });
+        }
+
+        function ejecutarCorteGeneral() {
+            if(!confirm("¿Seguro que deseas realizar el CORTE GENERAL? Se archivará todo el turno.")) return;
+
+            import("https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js").then(({ ref, get, push, remove }) => {
+                get(ref(window.db, window.refCorte)).then(snapshot => {
+                    const datosCorte = snapshot.val() || {};
+                    const pagos = datosCorte.pagos || {};
+                    const ordenes = datosCorte.ordenes || {};
+
+                    let totalPesos = 0, totalDolares = 0, totalTarjeta = 0, totalGeneral = 0;
+                    let totalDescuentosOtorgados = 0;
+                    let conteoPlatillos = {};
+                    let listaCancelacionesTexto = "";
+                    let totalOrdenesRealizadas = Object.keys(ordenes).length;
+
+                    Object.keys(pagos).forEach(k => {
+                        const p = pagos[k];
+                        totalGeneral += p.total;
+                        totalDescuentosOtorgados += (p.descuento || 0);
+                        if (p.metodo === 'pesos') totalPesos += p.total;
+                        if (p.metodo === 'dolares') totalDolares += p.total;
+                        if (p.metodo === 'tarjeta') totalTarjeta += p.total;
+                    });
+
+                    Object.keys(ordenes).forEach(k => {
+                        const ord = ordenes[k];
+                        if (ord.estado === "cancelada") {
+                            listaCancelacionesTexto += `• Orden [${ord.detalle}] — Razón: ${ord.razonCancelacion || 'Sin Razón'}\n`;
+                        } else {
+                            (ord.items || []).forEach(item => {
+                                conteoPlatillos[item.nombre] = (conteoPlatillos[item.nombre] || 0) + 1;
+                            });
+                        }
+                    });
+
+                    let platilloTop = "N/A";
+                    let maxVentas = 0;
+                    Object.keys(conteoPlatillos).forEach(p => {
+                        if (conteoPlatillos[p] > maxVentas) {
+                            maxVentas = conteoPlatillos[p];
+                            platilloTop = `${p} (${maxVentas} vendidos)`;
+                        }
+                    });
+
+                    const ticketPromedio = totalOrdenesRealizadas > 0 ? (totalGeneral / totalOrdenesRealizadas) : 0;
+                    const fechaHoy = new Date().toLocaleDateString('es-MX', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+
+                    const reporteTexto = 
+`================================
+📊 FOOD OS - CORTE DE CAJA
+Día: ${fechaHoy}
+================================
+💵 Efectivo Pesos:   $${totalPesos.toFixed(2)} MXN
+💵 Efectivo Dólares: $${totalDolares.toFixed(2)} MXN
+💳 Tarjeta:          $${totalTarjeta.toFixed(2)} MXN
+🏷️ Total Descuentos: -$${totalDescuentosOtorgados.toFixed(2)} MXN
+--------------------------------
+💰 TOTAL GENERAL:    $${totalGeneral.toFixed(2)} MXN
+📦 TOTAL ÓRDENES:    ${totalOrdenesRealizadas}
+📊 TICKET PROMEDIO:  $${ticketPromedio.toFixed(2)} MXN
+--------------------------------
+🏆 Platillo más vendido:
+${platilloTop}
+--------------------------------
+❌ ÓRDENES CANCELADAS:
+${listaCancelacionesTexto || 'Ninguna cancelación registrada.'}
+================================`;
+
+                    document.getElementById("texto-resumen-corte").value = reporteTexto;
+                    document.getElementById("modal-resumen-corte").classList.remove("hidden");
+
+                    push(ref(window.db, `${window.refSecurity}/cortes`), { fecha: fechaHoy, reporteTexto, totalGeneral }).then(() => {
+                        remove(ref(window.db, window.refCorte));
+                    });
+                });
+            });
+        }
+
+        function copiarCorteAlPortapapeles() {
+            const txt = document.getElementById("texto-resumen-corte");
+            txt.select();
+            document.execCommand("copy");
+            alert("📋 Reporte copiado al portapapeles.");
+        }
+
+        function abrirModalTrabajadores() {
+            renderizarListaEmpleadosAdmin();
+            renderizarCocinasAdmin();
+            actualizarSelectsCocina();
+            document.getElementById("modal-gestion-trabajadores").classList.remove("hidden");
+            cerrarModalMas();
+        }
+
+        function cerrarModalTrabajadores() {
+            document.getElementById("modal-gestion-trabajadores").classList.add("hidden");
+        }
+
+        function renderizarListaEmpleadosAdmin() {
+            const container = document.getElementById("lista-trabajadores-admin");
+            if (!container) return;
+            container.innerHTML = "";
+
+            const emps = window.empleadosBaseDatos || {};
+            if (Object.keys(emps).length === 0) {
+                container.innerHTML = `<p class="text-xs text-slate-400 text-center py-2">No hay empleados registrados.</p>`;
+                return;
+            }
+
+            Object.keys(emps).forEach(id => {
+                const emp = emps[id];
+                container.innerHTML += `
+                    <div class="btn-sunken p-2.5 flex justify-between items-center text-xs">
+                        <div>
+                            <p class="font-black text-amber-500">${emp.nombre} <span class="text-[10px] opacity-70">(${emp.rol.toUpperCase()})</span></p>
+                            <p class="text-[10px] opacity-70">📞 ${emp.telefono || 'Sin tel'} - Área: ${emp.area || 'General'}</p>
+                        </div>
+                        <div class="flex gap-1">
+                            <button onclick="editarEmpleadoAdmin('${id}')" class="bg-amber-500 text-black px-2 py-1 rounded font-bold">✏️</button>
+                            <button onclick="despedirEmpleadoAdmin('${id}', '${emp.pin}')" class="bg-rose-500 text-white px-2 py-1 rounded font-bold">✕</button>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        function editarEmpleadoAdmin(id) {
+            const emp = window.empleadosBaseDatos[id];
+            if (!emp) return;
+            document.getElementById("emp-id").value = id;
+            document.getElementById("emp-nombre").value = emp.nombre;
+            document.getElementById("emp-rol").value = emp.rol;
+            document.getElementById("emp-telefono").value = emp.telefono || "";
+            document.getElementById("emp-pin").value = emp.pin;
+            toggleAreaCocinaEmpleado();
+            if (emp.area) document.getElementById("emp-area-cocina").value = emp.area;
+        }
+
+        function despedirEmpleadoAdmin(id, pin) {
+            if (confirm("¿Despedir/Eliminar a este trabajador del sistema?")) {
+                import("https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js").then(({ ref, remove }) => {
+                    remove(ref(window.db, `${window.baseSucursalRef}/empleados/${id}`));
+                    remove(ref(window.db, `${window.baseSucursalRef}/pins/${pin}`));
+                    remove(ref(window.db, `${window.baseSucursalRef}/pins_area/${pin}`));
+                    alert("🗑️ Empleado retirado del sistema.");
+                });
+            }
+        }
+
+        function cerrarModalEnvio() { document.getElementById("modal-enviar-orden").classList.add("hidden"); }
+        function cerrarModalOrdenes() { document.getElementById("modal-ver-ordenes").classList.add("hidden"); }
+        function cerrarModalCobro() { document.getElementById("modal-cobrar-orden").classList.add("hidden"); }
+        function cerrarModalCorte() { document.getElementById("modal-resumen-corte").classList.add("hidden"); }
+        function abrirModalMas() { document.getElementById("modal-menu-mas").classList.remove("hidden"); }
+        function cerrarModalMas() { document.getElementById("modal-menu-mas").classList.add("hidden"); }
+    </script>
+</body>
+</html>
