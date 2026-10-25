@@ -1525,70 +1525,110 @@
             elemCambio.innerText = cambioMXN < 0 ? "$0.00 MXN" : `$${cambioMXN.toFixed(2)} MXN`;
         }
 
-        // VALIDACIÓN DE REPARTIDORES TOTALMENTE NORMALIZADA
+        // VALIDACIÓN DIRECTA Y RIGUROSA DE REPARTIDOR
         async function finalizarProcesoCobro() {
             if (!ordenActualProcesando) return;
 
-            const codigoRepaInput = document.getElementById("cobro-repa-code").value.trim();
-            let repaCodeFinal = ordenActualProcesando.repartidorId || codigoRepaInput;
+            const inputIngresado = document.getElementById("cobro-repa-code").value.trim();
+            let repaCodeFinal = inputIngresado;
 
             if (repaCodeFinal && repaCodeFinal !== "N/A" && repaCodeFinal !== "") {
-                import("https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js").then(async ({ ref, get }) => {
-                    const pinBuscadoStr = String(repaCodeFinal).trim().toLowerCase();
-                    let esValido = false;
+                const pinBuscado = String(repaCodeFinal).trim();
+                const pinBuscadoLower = pinBuscado.toLowerCase();
+                let repaEncontrado = null;
 
-                    // 1. REVISA NODO LOCAL DE EMPLEADOS
-                    const snapEmps = await get(ref(window.db, `${window.baseSucursalRef}/empleados`));
-                    const mapaEmps = snapEmps.val() || {};
-                    Object.keys(mapaEmps).forEach(k => {
-                        const emp = mapaEmps[k];
-                        const empPin = String(emp.pin || "").trim().toLowerCase();
-                        const empNom = String(emp.nombre || "").trim().toLowerCase();
-                        const empRol = String(emp.rol || "").trim().toLowerCase();
+                try {
+                    const { ref, get } = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js");
 
-                        if ((empPin === pinBuscadoStr || empNom === pinBuscadoStr || String(k).trim().toLowerCase() === pinBuscadoStr) && ["repartidor", "repa"].includes(empRol)) {
-                            esValido = true;
+                    // 1. LECTURA DIRECTA POR LLAVE /empleados/{PIN} EN LOCAL (Caso clave exacto de Firebase)
+                    const snapDirecto = await get(ref(window.db, `${window.baseSucursalRef}/empleados/${pinBuscado}`));
+                    if (snapDirecto.exists()) {
+                        const emp = snapDirecto.val();
+                        if (String(emp.rol || "").toLowerCase().includes("repa")) {
+                            repaEncontrado = { pin: pinBuscado, nombre: emp.nombre };
                         }
-                    });
-
-                    // 2. REVISA NODO /pins/
-                    if (!esValido) {
-                        const snapPins = await get(ref(window.db, `${window.baseSucursalRef}/pins`));
-                        const mapaPins = snapPins.val() || {};
-                        Object.keys(mapaPins).forEach(p => {
-                            if (String(p).trim().toLowerCase() === pinBuscadoStr) {
-                                const rol = String(mapaPins[p]).toLowerCase();
-                                if (["repartidor", "repa", "repartidores"].includes(rol)) esValido = true;
-                            }
-                        });
                     }
 
-                    // 3. REVISA NODO DE PUENTE DE REPARTIDORES
-                    if (!esValido) {
-                        const snapPuente = await get(ref(window.db, `${window.baseSucursalRef}/puente_repas_activo`));
-                        const tokenPuente = snapPuente.val();
-                        if (tokenPuente) {
-                            const snapRepaPuente = await get(ref(window.db, `businesses/${tokenPuente}/empleados`));
-                            const mapaPuente = snapRepaPuente.val() || {};
-                            Object.keys(mapaPuente).forEach(p => {
-                                const emp = mapaPuente[p];
-                                const empPin = String(emp.pin || "").trim().toLowerCase();
+                    // 2. BÚSQUEDA POR NOMBRE O PIN DENTRO DEL MAPA DE EMPLEADOS LOCAL
+                    if (!repaEncontrado) {
+                        const snapEmps = await get(ref(window.db, `${window.baseSucursalRef}/empleados`));
+                        if (snapEmps.exists()) {
+                            const emps = snapEmps.val();
+                            Object.keys(emps).forEach(k => {
+                                const emp = emps[k];
+                                const empPin = String(emp.pin || k).trim();
                                 const empNom = String(emp.nombre || "").trim().toLowerCase();
                                 const empRol = String(emp.rol || "").trim().toLowerCase();
 
-                                if ((empPin === pinBuscadoStr || empNom === pinBuscadoStr) && ["repartidor", "repa"].includes(empRol)) {
-                                    esValido = true;
+                                if (empRol.includes("repa")) {
+                                    if (empPin === pinBuscado || empNom === pinBuscadoLower) {
+                                        repaEncontrado = { pin: empPin, nombre: emp.nombre };
+                                    }
                                 }
                             });
                         }
                     }
 
-                    if (!esValido) {
-                        return alert(`❌ El PIN o Nombre "${codigoRepaInput}" no pertenece a ningún repartidor registrado.`);
+                    // 3. SI NO EXISTE EN LOCAL, BUSCA EN LA SUCURSAL PUENTE
+                    if (!repaEncontrado) {
+                        const snapPuente = await get(ref(window.db, `${window.baseSucursalRef}/puente_repas_activo`));
+                        const tokenPuente = snapPuente.val();
+
+                        if (tokenPuente) {
+                            // Intento 1 en Puente: Lectura directa por nodo
+                            const snapPuenteDirecto = await get(ref(window.db, `businesses/${tokenPuente}/empleados/${pinBuscado}`));
+                            if (snapPuenteDirecto.exists()) {
+                                const empP = snapPuenteDirecto.val();
+                                if (String(empP.rol || "").toLowerCase().includes("repa")) {
+                                    repaEncontrado = { pin: pinBuscado, nombre: empP.nombre };
+                                }
+                            }
+
+                            // Intento 2 en Puente: Recorrido completo
+                            if (!repaEncontrado) {
+                                const snapPuenteEmps = await get(ref(window.db, `businesses/${tokenPuente}/empleados`));
+                                if (snapPuenteEmps.exists()) {
+                                    const empsP = snapPuenteEmps.val();
+                                    Object.keys(empsP).forEach(k => {
+                                        const emp = empsP[k];
+                                        const empPin = String(emp.pin || k).trim();
+                                        const empNom = String(emp.nombre || "").trim().toLowerCase();
+                                        const empRol = String(emp.rol || "").trim().toLowerCase();
+
+                                        if (empRol.includes("repa")) {
+                                            if (empPin === pinBuscado || empNom === pinBuscadoLower) {
+                                                repaEncontrado = { pin: empPin, nombre: emp.nombre };
+                                            }
+                                        }
+                                    });
+                                }
+                            }
+                        }
                     }
 
-                    completarRegistroPagoBaseDatos(repaCodeFinal);
-                });
+                    // VALIDACIÓN FINAL
+                    if (!repaEncontrado) {
+                        return alert(`❌ El PIN o Nombre "${inputIngresado}" no pertenece a ningún repartidor activo de este negocio ni del puente.`);
+                    }
+
+                    // Si la orden ya venía asignada a un repartidor, verifica que coincida
+                    if (ordenActualProcesando.repartidorNombre) {
+                        const nomAsignado = String(ordenActualProcesando.repartidorNombre).trim().toLowerCase();
+                        const nomIngresado = repaEncontrado.nombre.trim().toLowerCase();
+
+                        if (!nomAsignado.includes(nomIngresado) && !nomIngresado.includes(nomAsignado)) {
+                            if (!confirm(`⚠️ Esta orden fue entregada por "${ordenActualProcesando.repartidorNombre}", pero estás ingresando el PIN de "${repaEncontrado.nombre}". ¿Deseas autorizar el cobro con este repartidor?`)) {
+                                return;
+                            }
+                        }
+                    }
+
+                    completarRegistroPagoBaseDatos(repaEncontrado.pin);
+
+                } catch (err) {
+                    console.error("Error validando repartidor:", err);
+                    alert("❌ Ocurrió un error al verificar el PIN en la base de datos.");
+                }
             } else {
                 completarRegistroPagoBaseDatos("N/A");
             }
