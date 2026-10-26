@@ -55,7 +55,7 @@ document.addEventListener('DOMContentLoaded', () => {
     verificarNegociosGuardados();
 });
 
-// MEMORIA MULTINEGOCIO LOCALSTORAGE
+// MEMORIA MULTINEGOCIO LOCALSTORAGE (SOPORTA MÚLTIPLES TOKENS)
 function guardarNegocioEnHistorial(token, nombre) {
     let historial = JSON.parse(localStorage.getItem('foodos_saved_businesses') || '{}');
     historial[token] = { name: nombre, lastUsed: Date.now() };
@@ -160,7 +160,6 @@ async function procesarTokenAcceso(rawToken) {
         const res = await fetch(urlConsulta);
         let data = await res.json();
 
-        // SI NO EXISTE EN FIREBASE, BUSCA EN NEGOCIOS.JSON Y LO REGISTRA AUTOMÁTICAMENTE
         if (!data) {
             data = await autoRegistrarNegocioDesdeLocalJson(cleanToken);
         }
@@ -204,7 +203,6 @@ async function autoRegistrarNegocioDesdeLocalJson(tokenBuscado) {
                 body: JSON.stringify(bizLocal)
             });
 
-            // CREA ESTRUCTURA DE CONFIGURACIÓN Y NOMBRE EN SEGURIDAD
             await fetch(`${FIREBASE_URL}/businesses/${tokenBuscado}/security_code/config/nombreLocal.json`, {
                 method: 'PUT',
                 body: JSON.stringify(bizLocal.business_name)
