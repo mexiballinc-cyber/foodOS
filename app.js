@@ -53,9 +53,18 @@ function actualizarEstadoRed() {
 document.addEventListener('DOMContentLoaded', () => {
     actualizarEstadoRed();
     verificarNegociosGuardados();
+
+    // Redirección directa al PIN al presionar X en Caja/Cocina/Repas
+    const urlParams = new URLSearchParams(window.location.search);
+    const tokenAuto = urlParams.get('token');
+    const autoLock = urlParams.get('autoLock');
+
+    if (autoLock === 'true' && tokenAuto) {
+        procesarTokenAcceso(tokenAuto);
+    }
 });
 
-// MEMORIA MULTINEGOCIO LOCALSTORAGE (SOPORTA MÚLTIPLES TOKENS)
+// MEMORIA MULTINEGOCIO LOCALSTORAGE
 function guardarNegocioEnHistorial(token, nombre) {
     let historial = JSON.parse(localStorage.getItem('foodos_saved_businesses') || '{}');
     historial[token] = { name: nombre, lastUsed: Date.now() };
