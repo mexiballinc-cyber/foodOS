@@ -268,16 +268,13 @@
                 `;
             });
         }
+window.cerrarSesion = function() {
+    const currentToken = localStorage.getItem("foodos_business_token");
+    localStorage.removeItem("foodos_role");
+    localStorage.removeItem("foodos_user_name");
+    localStorage.removeItem("foodos_session_token");
 
-       window.cerrarSesion = function() {
-    update(ref(db, `${refBase}/repartidores_rastreo/${repaId}`), { estadoColor: 'gris' }).then(() => {
-        const currentToken = localStorage.getItem("foodos_business_token");
-        localStorage.removeItem("foodos_role");
-        localStorage.removeItem("foodos_user_name");
-        localStorage.removeItem("foodos_session_token");
-        
-        window.location.href = `index.html?token=${currentToken}&autoLock=true`;
-    });
+    window.location.href = `index.html?token=${currentToken}&autoLock=true`;
 };
     </script>
 
