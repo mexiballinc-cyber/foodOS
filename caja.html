@@ -55,10 +55,27 @@
 
             if (esGerente) {
                 document.querySelectorAll(".solo-gerente").forEach(el => el.classList.remove("hidden"));
+                verificarAperturaCajaInicial();
             }
 
             escucharRastreoRepartidoresAdmin();
         });
+
+        async function verificarAperturaCajaInicial() {
+            const snapCaja = await get(ref(db, `${baseSucursal}/caja_inicial`));
+            if (!snapCaja.exists()) {
+                const montoInicial = prompt("💰 [APERTURA DE NEGOCIO]\nIngresa la cantidad inicial de dinero en caja para este nuevo turno ($ MXN):", "500");
+                if (montoInicial !== null) {
+                    const monto = parseFloat(montoInicial) || 0;
+                    set(ref(db, `${baseSucursal}/caja_inicial`), {
+                        monto: monto,
+                        abiertoPor: usuarioActivo,
+                        timestamp: Date.now()
+                    });
+                    alert(`✅ Negocio abierto con $${monto.toFixed(2)} MXN en caja inicial.`);
+                }
+            }
+        }
 
         onValue(ref(db, `${refSecurity}/categorias`), (snapshot) => {
             window.categoriasMap = snapshot.val() || {};
@@ -268,14 +285,15 @@
                 `;
             });
         }
-window.cerrarSesion = function() {
-    const currentToken = localStorage.getItem("foodos_business_token");
-    localStorage.removeItem("foodos_role");
-    localStorage.removeItem("foodos_user_name");
-    localStorage.removeItem("foodos_session_token");
 
-    window.location.href = `index.html?token=${currentToken}&autoLock=true`;
-};
+        window.cerrarSesion = function() {
+            const currentToken = localStorage.getItem("foodos_business_token");
+            localStorage.removeItem("foodos_role");
+            localStorage.removeItem("foodos_user_name");
+            localStorage.removeItem("foodos_session_token");
+
+            window.location.href = `index.html?token=${currentToken}&autoLock=true`;
+        };
     </script>
 
     <style>
@@ -284,7 +302,7 @@ window.cerrarSesion = function() {
             --text-color: #f8fafc;
             --glass-bg: rgba(255, 255, 255, 0.05);
             --glass-border: rgba(255, 255, 255, 0.12);
-            --shadow-raised: 6px 6px 12px rgba(0, 0, 0, 0.4), -3px -3px 8px rgba(255, 255, 255, 0.05);
+            --shadow-raised: 6px 6px 12px rgba(0, 0, 0, 0.4), -3px -3px 8px rgba(0, 0, 0, 0.05);
             --shadow-sunken: inset 3px 3px 6px rgba(0, 0, 0, 0.5), inset -2px -2px 4px rgba(255, 255, 255, 0.05);
             --input-bg: rgba(0, 0, 0, 0.4);
             --select-bg: #0f172a;
@@ -481,11 +499,22 @@ window.cerrarSesion = function() {
                 <button type="button" onclick="guardarPaqueteCompleto()" class="btn-raised w-1/2 py-2.5 text-xs font-black text-emerald-400 uppercase bg-emerald-500/20">Guardar Combo</button>
             </div>
 
-            <!-- GESTIÓN DE PAQUETES EXISTENTES -->
             <div class="border-t border-white/10 pt-3 space-y-2">
                 <p class="text-[10px] font-bold text-amber-500 uppercase">Combos Creados Actualmente:</p>
                 <div id="lista-gestion-paquetes-admin" class="max-h-32 overflow-y-auto space-y-1"></div>
             </div>
+        </div>
+    </div>
+
+    <!-- MODAL HISTORIAL DE CORTES GENERALES -->
+    <div id="modal-historico-cortes" class="hidden fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
+        <div class="glass-panel w-full max-w-lg p-5 space-y-3">
+            <div class="flex justify-between items-center border-b border-white/10 pb-2">
+                <h3 class="text-base font-black text-amber-500">📚 Histórico de Cortes Realizados</h3>
+                <button onclick="cerrarModalHistoricoCortes()" class="btn-sunken w-7 h-7 text-xs">✕</button>
+            </div>
+            <div id="lista-cortes-guardados" class="max-h-80 overflow-y-auto space-y-2 pr-1"></div>
+            <button onclick="cerrarModalHistoricoCortes()" class="btn-raised w-full py-2 text-xs font-bold">Cerrar</button>
         </div>
     </div>
 
@@ -692,7 +721,8 @@ window.cerrarSesion = function() {
             <textarea id="texto-resumen-corte" rows="14" readonly class="btn-sunken w-full p-3 text-xs font-mono outline-none"></textarea>
 
             <div class="flex gap-2">
-                <button onclick="copiarCorteAlPortapapeles()" class="btn-raised w-full py-2.5 text-xs font-bold text-sky-400">📋 Copiar al Portapapeles</button>
+                <button onclick="copiarCorteAlPortapapeles()" class="btn-raised w-1/2 py-2.5 text-xs font-bold text-sky-400">📋 Copiar</button>
+                <button onclick="imprimirTicketDirecto(document.getElementById('texto-resumen-corte').value)" class="btn-raised w-1/2 py-2.5 text-xs font-black text-emerald-400">🖨️ Imprimir Ticket</button>
             </div>
         </div>
     </div>
@@ -708,11 +738,13 @@ window.cerrarSesion = function() {
             <div class="space-y-2 text-xs font-bold">
                 <button onclick="verTodasLasOrdenes()" class="btn-raised w-full p-3 text-left">📜 Ver Todas las Órdenes</button>
                 <button onclick="abrirModalAplicarDescuentoAdmin()" class="solo-gerente hidden btn-raised w-full p-3 text-left text-amber-400">🏷️ Aplicar Descuento / Orden Gratis (Admin)</button>
+                <button onclick="realizarRetiroCajaAdmin()" class="btn-raised w-full p-3 text-left text-amber-400">💸 Realizar Retiro de Caja</button>
                 <button onclick="abrirModalCrearPaquete()" class="btn-raised w-full p-3 text-left text-emerald-400">🍱 Crear / Gestionar Paquetes Combos</button>
+                <button onclick="verHistoricoCortesHechos()" class="btn-raised w-full p-3 text-left text-sky-400">📚 Ver Histórico de Cortes Guardados</button>
                 <button onclick="abrirModalTrabajadores()" class="solo-gerente hidden btn-raised w-full p-3 text-left text-amber-400">👥 Gestión de Trabajadores y Cocinas (Admin)</button>
                 <button onclick="vincularPuenteRepartidores()" class="solo-gerente hidden btn-raised w-full p-3 text-left text-sky-400">🌉 Vincular Puente de Repas</button>
                 <button onclick="desactivarPuenteRepartidores()" class="solo-gerente hidden btn-raised w-full p-3 text-left text-rose-400">🚫 Desactivar Puente</button>
-                <button onclick="ejecutarCorteGeneral()" class="btn-raised w-full p-3 text-left text-emerald-400">💵 Realizar Corte General</button>
+                <button onclick="ejecutarCorteGeneral()" class="btn-raised w-full p-3 text-left text-emerald-400">💵 Realizar Corte General (Requiere PIN Admin)</button>
             </div>
         </div>
     </div>
@@ -763,7 +795,6 @@ window.cerrarSesion = function() {
                 <button type="submit" class="btn-raised w-full py-2 font-black text-emerald-400 uppercase">Guardar Empleado</button>
             </form>
 
-            <!-- GESTIÓN DE COCINAS -->
             <div class="glass-panel p-3 space-y-2 text-xs border-t border-white/10">
                 <p class="font-bold text-amber-500 uppercase text-[10px]">🍳 Gestión de Cocinas / Áreas:</p>
                 <div class="flex gap-2">
@@ -958,7 +989,6 @@ window.cerrarSesion = function() {
             document.getElementById("total-usd").innerText = `$${totalUSD.toFixed(2)} USD`;
         }
 
-        // DESCUENTOS Y PAQUETES
         window.abrirModalAplicarDescuentoAdmin = function() {
             const descStr = prompt("🏷️ Ingresa monto del descuento en MXN (Ej. 20 o pon el total para dejar GRATIS):");
             if (descStr !== null && !isNaN(descStr)) {
@@ -966,6 +996,35 @@ window.cerrarSesion = function() {
                 renderizarTicket();
                 cerrarModalMas();
             }
+        };
+
+        window.realizarRetiroCajaAdmin = async function() {
+            const pin = prompt("🔒 Ingrese PIN de Administrador/Gerente para autorizar el retiro:");
+            if (!pin) return;
+
+            import("https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js").then(async ({ ref, get, push }) => {
+                const snapPins = await get(ref(window.db, `${window.baseSucursalRef}/pins/${pin.trim()}`));
+                const rol = snapPins.val();
+
+                if (rol === "admin" || rol === "gerente" || window.esGerente) {
+                    const monto = parseFloat(prompt("💸 Cantidad de dinero a retirar de la caja ($ MXN):"));
+                    const razon = prompt("📝 Razón o motivo del retiro de efectivo:");
+
+                    if (monto > 0 && razon) {
+                        push(ref(window.db, `${window.refCorte}/retiros`), {
+                            monto: monto,
+                            razon: razon,
+                            autorizadoPor: pin.trim(),
+                            hora: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                        }).then(() => {
+                            alert(`✅ Retiro de $${monto.toFixed(2)} registrado exitosamente.`);
+                            cerrarModalMas();
+                        });
+                    }
+                } else {
+                    alert("❌ PIN no autorizado para realizar retiros de caja.");
+                }
+            });
         };
 
         window.abrirModalCrearPaquete = function() {
@@ -1161,7 +1220,6 @@ window.cerrarSesion = function() {
             const esCombo = item.esComponenteCombo || item.nombre.startsWith("└ ");
 
             if (esCombo) {
-                // PARA PLATILLOS DE COMBO: BUSCA SU CATEGORÍA Y PERMITE CAMBIAR POR CUALQUIERA DE ESA CATEGORÍA
                 const nombreLimpio = item.nombre.replace(/^└\s*/, '');
                 let categoriaOriginal = null;
 
@@ -1183,7 +1241,6 @@ window.cerrarSesion = function() {
                     }
                 });
             } else {
-                // PARA PLATILLOS NORMALES: FILTRA POR MISMO PRECIO
                 labelReemplazo.innerText = "Cambiar por otro del mismo precio:";
                 Object.values(menu).forEach(prod => {
                     if (prod.precio === item.precio && prod.nombre !== item.nombre) {
@@ -1338,6 +1395,21 @@ window.cerrarSesion = function() {
             import("https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js").then(({ push, ref }) => {
                 push(ref(window.db, `${window.refCorte}/ordenes`), nuevaOrden).then(() => {
                     alert(`✅ Orden enviada a ${tipoOrdenSeleccionado.toUpperCase()}`);
+                    
+                    if (confirm("🖨️ ¿Deseas imprimir el ticket de esta orden enviada?")) {
+                        const ticketTexto = `
+================================
+FOOD OS - ${tipoOrdenSeleccionado.toUpperCase()}
+Cliente/Mesa: ${detalle}
+Fecha: ${nuevaOrden.fecha}
+--------------------------------
+${itemsParaCocina.map(i => `1x ${i.nombre} - $${i.precio}`).join('\n')}
+--------------------------------
+TOTAL: $${totalFinal.toFixed(2)} MXN
+================================`;
+                        imprimirTicketDirecto(ticketTexto);
+                    }
+
                     ticketArray = [];
                     montoDescuentoEspecial = 0;
                     renderizarTicket();
@@ -1528,7 +1600,6 @@ window.cerrarSesion = function() {
             elemCambio.innerText = cambioMXN < 0 ? "$0.00 MXN" : `$${cambioMXN.toFixed(2)} MXN`;
         }
 
-        // VALIDACIÓN DIRECTA Y RIGUROSA DE REPARTIDOR
         async function finalizarProcesoCobro() {
             if (!ordenActualProcesando) return;
 
@@ -1543,7 +1614,6 @@ window.cerrarSesion = function() {
                 try {
                     const { ref, get } = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js");
 
-                    // 1. LECTURA DIRECTA POR LLAVE /empleados/{PIN} EN LOCAL (Caso clave exacto de Firebase)
                     const snapDirecto = await get(ref(window.db, `${window.baseSucursalRef}/empleados/${pinBuscado}`));
                     if (snapDirecto.exists()) {
                         const emp = snapDirecto.val();
@@ -1552,7 +1622,6 @@ window.cerrarSesion = function() {
                         }
                     }
 
-                    // 2. BÚSQUEDA POR NOMBRE O PIN DENTRO DEL MAPA DE EMPLEADOS LOCAL
                     if (!repaEncontrado) {
                         const snapEmps = await get(ref(window.db, `${window.baseSucursalRef}/empleados`));
                         if (snapEmps.exists()) {
@@ -1572,13 +1641,11 @@ window.cerrarSesion = function() {
                         }
                     }
 
-                    // 3. SI NO EXISTE EN LOCAL, BUSCA EN LA SUCURSAL PUENTE
                     if (!repaEncontrado) {
                         const snapPuente = await get(ref(window.db, `${window.baseSucursalRef}/puente_repas_activo`));
                         const tokenPuente = snapPuente.val();
 
                         if (tokenPuente) {
-                            // Intento 1 en Puente: Lectura directa por nodo
                             const snapPuenteDirecto = await get(ref(window.db, `businesses/${tokenPuente}/empleados/${pinBuscado}`));
                             if (snapPuenteDirecto.exists()) {
                                 const empP = snapPuenteDirecto.val();
@@ -1587,7 +1654,6 @@ window.cerrarSesion = function() {
                                 }
                             }
 
-                            // Intento 2 en Puente: Recorrido completo
                             if (!repaEncontrado) {
                                 const snapPuenteEmps = await get(ref(window.db, `businesses/${tokenPuente}/empleados`));
                                 if (snapPuenteEmps.exists()) {
@@ -1609,12 +1675,10 @@ window.cerrarSesion = function() {
                         }
                     }
 
-                    // VALIDACIÓN FINAL
                     if (!repaEncontrado) {
                         return alert(`❌ El PIN o Nombre "${inputIngresado}" no pertenece a ningún repartidor activo de este negocio ni del puente.`);
                     }
 
-                    // Si la orden ya venía asignada a un repartidor, verifica que coincida
                     if (ordenActualProcesando.repartidorNombre) {
                         const nomAsignado = String(ordenActualProcesando.repartidorNombre).trim().toLowerCase();
                         const nomIngresado = repaEncontrado.nombre.trim().toLowerCase();
@@ -1656,6 +1720,18 @@ window.cerrarSesion = function() {
                         });
                     }
                     alert("💵 ¡Cobro registrado con éxito!");
+
+                    if (confirm("🖨️ ¿Imprimir ticket de cobro para el cliente?")) {
+                        const ticketTexto = `
+================================
+FOOD OS - TICKET DE PAGO
+Monto Pagado: $${ordenActualProcesando.total.toFixed(2)} MXN
+Método: ${metodoPagoSeleccionado.toUpperCase()}
+Fecha: ${pagoData.fecha}
+================================`;
+                        imprimirTicketDirecto(ticketTexto);
+                    }
+
                     ticketArray = [];
                     montoDescuentoEspecial = 0;
                     renderizarTicket();
@@ -1664,66 +1740,108 @@ window.cerrarSesion = function() {
             });
         }
 
-        function ejecutarCorteGeneral() {
-            if(!confirm("¿Seguro que deseas realizar el CORTE GENERAL? Se archivará todo el turno.")) return;
+        async function ejecutarCorteGeneral() {
+            const pinGerente = prompt("🔒 [OBLIGATORIO] Ingresa el PIN de Gerente / Administrador para realizar el CORTE GENERAL:");
+            if (!pinGerente) return;
 
-            import("https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js").then(({ ref, get, push, remove }) => {
-                get(ref(window.db, window.refCorte)).then(snapshot => {
-                    const datosCorte = snapshot.val() || {};
-                    const pagos = datosCorte.pagos || {};
-                    const ordenes = datosCorte.ordenes || {};
+            import("https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js").then(async ({ ref, get, push, remove }) => {
+                const snapPins = await get(ref(window.db, `${window.baseSucursalRef}/pins/${pinGerente.trim()}`));
+                const rolEncontrado = snapPins.val();
 
-                    let totalPesos = 0, totalDolares = 0, totalTarjeta = 0, totalGeneral = 0;
-                    let totalDescuentosOtorgados = 0;
-                    let conteoPlatillos = {};
-                    let listaCancelacionesTexto = "";
-                    let totalOrdenesRealizadas = Object.keys(ordenes).length;
+                if (rolEncontrado !== "admin" && rolEncontrado !== "gerente" && !window.esGerente) {
+                    return alert("❌ PIN incorrecto o sin privilegios de Gerente para cerrar el turno.");
+                }
 
-                    Object.keys(pagos).forEach(k => {
-                        const p = pagos[k];
-                        totalGeneral += p.total;
-                        totalDescuentosOtorgados += (p.descuento || 0);
-                        if (p.metodo === 'pesos') totalPesos += p.total;
-                        if (p.metodo === 'dolares') totalDolares += p.total;
-                        if (p.metodo === 'tarjeta') totalTarjeta += p.total;
-                    });
+                if(!confirm("⚠️ ¿Seguro que deseas realizar el CORTE GENERAL? Se archivará todo el turno.")) return;
 
-                    Object.keys(ordenes).forEach(k => {
-                        const ord = ordenes[k];
-                        if (ord.estado === "cancelada") {
-                            listaCancelacionesTexto += `• Orden [${ord.detalle}] — Razón: ${ord.razonCancelacion || 'Sin Razón'}\n`;
-                        } else {
-                            (ord.items || []).forEach(item => {
-                                conteoPlatillos[item.nombre] = (conteoPlatillos[item.nombre] || 0) + 1;
-                            });
-                        }
-                    });
+                const snapshot = await get(ref(window.db, window.refCorte));
+                const snapAsist = await get(ref(window.db, `${window.baseSucursalRef}/asistencias_turno`));
+                const snapRetiros = await get(ref(window.db, `${window.refCorte}/retiros`));
+                const snapCajaInic = await get(ref(window.db, `${window.baseSucursalRef}/caja_inicial`));
 
-                    let platilloTop = "N/A";
-                    let maxVentas = 0;
-                    Object.keys(conteoPlatillos).forEach(p => {
-                        if (conteoPlatillos[p] > maxVentas) {
-                            maxVentas = conteoPlatillos[p];
-                            platilloTop = `${p} (${maxVentas} vendidos)`;
-                        }
-                    });
+                const datosCorte = snapshot.val() || {};
+                const pagos = datosCorte.pagos || {};
+                const ordenes = datosCorte.ordenes || {};
+                const asistencias = snapAsist.val() || {};
+                const retiros = snapRetiros.val() || {};
+                const cajaInicialObj = snapCajaInic.val() || { monto: 0 };
 
-                    const ticketPromedio = totalOrdenesRealizadas > 0 ? (totalGeneral / totalOrdenesRealizadas) : 0;
-                    const fechaHoy = new Date().toLocaleDateString('es-MX', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+                let totalPesos = 0, totalDolares = 0, totalTarjeta = 0, totalGeneral = 0;
+                let totalDescuentosOtorgados = 0;
+                let totalRetirosAcumulados = 0;
+                let conteoPlatillos = {};
+                let listaCancelacionesTexto = "";
+                let listaAsistenciasTexto = "";
+                let listaRetirosTexto = "";
 
-                    const reporteTexto = 
+                let totalOrdenesRealizadas = Object.keys(ordenes).length;
+
+                Object.keys(pagos).forEach(k => {
+                    const p = pagos[k];
+                    totalGeneral += p.total;
+                    totalDescuentosOtorgados += (p.descuento || 0);
+                    if (p.metodo === 'pesos') totalPesos += p.total;
+                    if (p.metodo === 'dolares') totalDolares += p.total;
+                    if (p.metodo === 'tarjeta') totalTarjeta += p.total;
+                });
+
+                Object.keys(retiros).forEach(k => {
+                    const r = retiros[k];
+                    totalRetirosAcumulados += r.monto;
+                    listaRetirosTexto += `• $${r.monto} MXN - Razón: ${r.razon} (${r.hora})\n`;
+                });
+
+                Object.keys(asistencias).forEach(k => {
+                    const a = asistencias[k];
+                    listaAsistenciasTexto += `• ${a.nombre} (${a.rol}): Entrada ${a.entrada || 'N/A'} | Salida ${a.salida || 'Aún en turno'}\n`;
+                });
+
+                Object.keys(ordenes).forEach(k => {
+                    const ord = ordenes[k];
+                    if (ord.estado === "cancelada") {
+                        listaCancelacionesTexto += `• Orden [${ord.detalle}] — Razón: ${ord.razonCancelacion || 'Sin Razón'}\n`;
+                    } else {
+                        (ord.items || []).forEach(item => {
+                            conteoPlatillos[item.nombre] = (conteoPlatillos[item.nombre] || 0) + 1;
+                        });
+                    }
+                });
+
+                let platilloTop = "N/A";
+                let maxVentas = 0;
+                Object.keys(conteoPlatillos).forEach(p => {
+                    if (conteoPlatillos[p] > maxVentas) {
+                        maxVentas = conteoPlatillos[p];
+                        platilloTop = `${p} (${maxVentas} vendidos)`;
+                    }
+                });
+
+                const ticketPromedio = totalOrdenesRealizadas > 0 ? (totalGeneral / totalOrdenesRealizadas) : 0;
+                const fechaHoy = new Date().toLocaleDateString('es-MX', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+                const saldoEfectivoFinalEnCaja = (cajaInicialObj.monto + totalPesos) - totalRetirosAcumulados;
+
+                const reporteTexto = 
 `================================
 📊 FOOD OS - CORTE DE CAJA
 Día: ${fechaHoy}
 ================================
+💵 Caja Inicial:      $${cajaInicialObj.monto.toFixed(2)} MXN
 💵 Efectivo Pesos:   $${totalPesos.toFixed(2)} MXN
 💵 Efectivo Dólares: $${totalDolares.toFixed(2)} MXN
 💳 Tarjeta:          $${totalTarjeta.toFixed(2)} MXN
+💸 Retiros de Caja: -$${totalRetirosAcumulados.toFixed(2)} MXN
 🏷️ Total Descuentos: -$${totalDescuentosOtorgados.toFixed(2)} MXN
 --------------------------------
-💰 TOTAL GENERAL:    $${totalGeneral.toFixed(2)} MXN
-📦 TOTAL ÓRDENES:    ${totalOrdenesRealizadas}
-📊 TICKET PROMEDIO:  $${ticketPromedio.toFixed(2)} MXN
+💰 SALDO FINAL EN CAJA: $${saldoEfectivoFinalEnCaja.toFixed(2)} MXN
+💰 VENTAS TOTALES:      $${totalGeneral.toFixed(2)} MXN
+📦 TOTAL ÓRDENES:       ${totalOrdenesRealizadas}
+📊 TICKET PROMEDIO:     $${ticketPromedio.toFixed(2)} MXN
+--------------------------------
+👥 ASISTENCIA DE EMPLEADOS:
+${listaAsistenciasTexto || 'Sin registros de asistencia.'}
+--------------------------------
+💸 RETIROS REALIZADOS:
+${listaRetirosTexto || 'Sin retiros de caja.'}
 --------------------------------
 🏆 Platillo más vendido:
 ${platilloTop}
@@ -1732,15 +1850,72 @@ ${platilloTop}
 ${listaCancelacionesTexto || 'Ninguna cancelación registrada.'}
 ================================`;
 
-                    document.getElementById("texto-resumen-corte").value = reporteTexto;
-                    document.getElementById("modal-resumen-corte").classList.remove("hidden");
+                document.getElementById("texto-resumen-corte").value = reporteTexto;
+                document.getElementById("modal-resumen-corte").classList.remove("hidden");
 
-                    push(ref(window.db, `${window.refSecurity}/cortes`), { fecha: fechaHoy, reporteTexto, totalGeneral }).then(() => {
-                        remove(ref(window.db, window.refCorte));
-                    });
+                const idCorteGuardado = "CORTE_" + Date.now();
+                push(ref(window.db, `${window.refSecurity}/cortes_historicos`), { 
+                    id: idCorteGuardado,
+                    fecha: fechaHoy, 
+                    reporteTexto, 
+                    totalGeneral,
+                    timestamp: Date.now()
+                }).then(() => {
+                    remove(ref(window.db, window.refCorte));
+                    remove(ref(window.db, `${window.baseSucursalRef}/asistencias_turno`));
+                    remove(ref(window.db, `${window.baseSucursalRef}/caja_inicial`));
                 });
             });
         }
+
+        window.verHistoricoCortesHechos = function() {
+            import("https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js").then(({ ref, get }) => {
+                get(ref(window.db, `${window.refSecurity}/cortes_historicos`)).then(snap => {
+                    const cortes = snap.val() || {};
+                    const container = document.getElementById("lista-cortes-guardados");
+                    container.innerHTML = "";
+
+                    if (Object.keys(cortes).length === 0) {
+                        container.innerHTML = `<p class="text-xs text-slate-400 py-4 text-center">No hay historial de cortes realizados.</p>`;
+                    } else {
+                        Object.keys(cortes).reverse().forEach(k => {
+                            const c = cortes[k];
+                            container.innerHTML += `
+                                <div class="btn-sunken p-3 text-xs space-y-1">
+                                    <div class="flex justify-between items-center font-bold text-amber-500">
+                                        <span>📅 ${c.fecha}</span>
+                                        <span class="text-emerald-400 font-black">$${(c.totalGeneral || 0).toFixed(2)} MXN</span>
+                                    </div>
+                                    <button onclick="copiarCorteAlPortapapelesTexto(\`${c.reporteTexto.replace(/`/g, '')}\`)" class="btn-raised px-2 py-1 text-[10px] text-sky-400 font-bold">📋 Copiar Reporte Completo</button>
+                                </div>
+                            `;
+                        });
+                    }
+                    document.getElementById("modal-historico-cortes").classList.remove("hidden");
+                    cerrarModalMas();
+                });
+            });
+        };
+
+        window.cerrarModalHistoricoCortes = function() {
+            document.getElementById("modal-historico-cortes").classList.add("hidden");
+        };
+
+        window.copiarCorteAlPortapapelesTexto = function(texto) {
+            navigator.clipboard.writeText(texto);
+            alert("📋 Reporte del corte copiado al portapapeles.");
+        };
+
+        window.imprimirTicketDirecto = function(textoTicket) {
+            const ventanaImp = window.open('', '_blank', 'width=300,height=400');
+            ventanaImp.document.write(`<pre style="font-family:monospace; font-size:12px; white-space:pre-wrap;">${textoTicket}</pre>`);
+            ventanaImp.document.close();
+            ventanaImp.focus();
+            setTimeout(() => {
+                ventanaImp.print();
+                ventanaImp.close();
+            }, 250);
+        };
 
         function copiarCorteAlPortapapeles() {
             const txt = document.getElementById("texto-resumen-corte");
