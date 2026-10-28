@@ -291,9 +291,12 @@ function actionExitOrClear() {
     }
 }
 
-// OPCIÓN A: CONFIRMACIÓN DE SEGURIDAD NATIVA Y FLUIDA
+// AUTENTICACIÓN NATIVA DEL DISPOSITIVO (SOLO MÓVIL / SIN POPUPS DE PASSKEYS O WINDOWS HELLO)
 async function solicitarBiometriaOPasskey() {
-    if (window.PublicKeyCredential && await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()) {
+    const esMovil = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+    // Si es un celular/tablet y cuenta con biometría o PIN de pantalla
+    if (esMovil && window.PublicKeyCredential && await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()) {
         try {
             await navigator.credentials.get({
                 publicKey: {
@@ -304,13 +307,19 @@ async function solicitarBiometriaOPasskey() {
             });
             return true;
         } catch (err) {
-            alert("⚠️ Confirmación de seguridad cancelada.");
-            return false;
+            alert("⚠️ Autenticación biométrica o PIN del dispositivo cancelado.");
+            return false; // Cancela la entrada
         }
     }
     
-    // Si no hay autenticador de plataforma activo o disponible, pide confirmación clara
-    return confirm("🔒 ¿Confirmar tu identidad para registrar asistencia?");
+    // Si estamos en Computadora (Windows/Mac) o no hay sensor biométrico en el móvil:
+    // Pide confirmación nativa rápida sin lanzar el menú de Windows Hello ni gestor de contraseñas.
+    const confirmado = confirm("🔒 Confirmación de Asistencia:\n\n¿Autorizas registrar tu entrada/salida para este turno?");
+    if (!confirmado) {
+        alert("⚠️ Operación cancelada.");
+        return false;
+    }
+    return true;
 }
 
 async function submitPin() {
@@ -341,7 +350,7 @@ async function submitPin() {
                 if (!verificado) {
                     inputPin = "";
                     actualizarPinDisplay();
-                    return; // Cancela y no entra si le picaron a cancelar
+                    return; // Si cancela, no entra ni guarda en Firebase
                 }
                 const horaEntrada = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                 await fetch(refAsistencia, {
@@ -379,7 +388,7 @@ async function abrirRelojChecador() {
         if (!verificado) {
             inputPin = "";
             actualizarPinDisplay();
-            return; // Cancela si le picaron a cancelar
+            return; // Si cancela, detiene todo
         }
 
         const horaActual = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
