@@ -291,35 +291,17 @@ function actionExitOrClear() {
     }
 }
 
-// AUTENTICACIÓN NATIVA DEL DISPOSITIVO (SOLO MÓVIL / SIN POPUPS DE PASSKEYS O WINDOWS HELLO)
-async function solicitarBiometriaOPasskey() {
-    const esMovil = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-
-    // Si es un celular/tablet y cuenta con biometría o PIN de pantalla
-    if (esMovil && window.PublicKeyCredential && await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()) {
-        try {
-            await navigator.credentials.get({
-                publicKey: {
-                    challenge: new Uint8Array(32),
-                    timeout: 30000,
-                    userVerification: "required"
-                }
-            });
-            return true;
-        } catch (err) {
-            alert("⚠️ Autenticación biométrica o PIN del dispositivo cancelado.");
-            return false; // Cancela la entrada
-        }
+// CONFIRMACIÓN DE SEGURIDAD INTERNA (SIN PASSKEYS DE GOOGLE/APPLE)
+async function solicitarBiometriaOPasskey(nombreUsuario, tipoAccion) {
+    const mensaje = `🔒 CONFIRMACIÓN DE ASISTENCIA\n\nHola ${nombreUsuario}, ¿confirmas registrar tu ${tipoAccion} en este turno?`;
+    const verificado = confirm(mensaje);
+    
+    if (!verificado) {
+        alert("⚠️ Registro de asistencia cancelado por el usuario.");
+        return false; // Cancela el proceso y no modifica Firebase
     }
     
-    // Si estamos en Computadora (Windows/Mac) o no hay sensor biométrico en el móvil:
-    // Pide confirmación nativa rápida sin lanzar el menú de Windows Hello ni gestor de contraseñas.
-    const confirmado = confirm("🔒 Confirmación de Asistencia:\n\n¿Autorizas registrar tu entrada/salida para este turno?");
-    if (!confirmado) {
-        alert("⚠️ Operación cancelada.");
-        return false;
-    }
-    return true;
+    return true; // Aceptado
 }
 
 async function submitPin() {
@@ -346,11 +328,11 @@ async function submitPin() {
             const dataAsist = await resAsist.json();
 
             if (!dataAsist || !dataAsist.entrada) {
-                const verificado = await solicitarBiometriaOPasskey();
+                const verificado = await solicitarBiometriaOPasskey(userName, "ENTRADA");
                 if (!verificado) {
                     inputPin = "";
                     actualizarPinDisplay();
-                    return; // Si cancela, no entra ni guarda en Firebase
+                    return; // Cancela el ingreso si le picaron a "Cancelar"
                 }
                 const horaEntrada = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                 await fetch(refAsistencia, {
@@ -369,7 +351,7 @@ async function submitPin() {
     }
 }
 
-// RELOJ CHECADOR DIRECTO (SVG RELOJ)
+// RELOJ CHECADOR DIRECTO (BOTÓN SVG RELOJ)
 async function abrirRelojChecador() {
     if (!inputPin || inputPin.length < 4) {
         alert("🔑 Ingresa primero tu PIN de 4 dígitos en el teclado numérico.");
@@ -384,20 +366,22 @@ async function abrirRelojChecador() {
             empNombre = currentBusinessData.empleados[inputPin].nombre || empNombre;
         }
 
-        const verificado = await solicitarBiometriaOPasskey();
-        if (!verificado) {
-            inputPin = "";
-            actualizarPinDisplay();
-            return; // Si cancela, detiene todo
-        }
-
-        const horaActual = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         const refAsistencia = `${FIREBASE_URL}/businesses/${currentBusinessToken}/asistencias_turno/${inputPin}.json`;
-
         const res = await fetch(refAsistencia);
         const datosExistentes = await res.json();
 
-        if (!datosExistentes || !datosExistentes.entrada) {
+        const tipoAccion = (!datosExistentes || !datosExistentes.entrada) ? "ENTRADA" : "SALIDA";
+        const verificado = await solicitarBiometriaOPasskey(empNombre, tipoAccion);
+
+        if (!verificado) {
+            inputPin = "";
+            actualizarPinDisplay();
+            return; // Cancela todo si le pican a Cancelar
+        }
+
+        const horaActual = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+        if (tipoAccion === "ENTRADA") {
             await fetch(refAsistencia, {
                 method: 'PUT',
                 body: JSON.stringify({ nombre: empNombre, entrada: horaActual, rol: empRol })
