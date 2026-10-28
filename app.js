@@ -54,7 +54,6 @@ document.addEventListener('DOMContentLoaded', () => {
     actualizarEstadoRed();
     verificarNegociosGuardados();
 
-    // Redirección directa al PIN al presionar X en Caja/Cocina/Repas
     const urlParams = new URLSearchParams(window.location.search);
     const tokenAuto = urlParams.get('token');
     const autoLock = urlParams.get('autoLock');
@@ -181,9 +180,10 @@ async function procesarTokenAcceso(rawToken) {
             }
 
             currentBusinessData = data;
-            guardarNegocioEnHistorial(cleanToken, currentBusinessData.business_name || cleanToken);
+            const nombreMostrar = currentBusinessData.business_name || cleanToken;
+            guardarNegocioEnHistorial(cleanToken, nombreMostrar);
 
-            document.getElementById('business-title').innerText = currentBusinessData.business_name;
+            document.getElementById('business-title').innerText = nombreMostrar;
             document.getElementById('welcome-screen').classList.add('hidden');
             document.getElementById('scanner-screen').classList.add('hidden');
             document.getElementById('lockscreen').classList.remove('hidden');
@@ -270,7 +270,7 @@ function pressPin(n) {
 
 function actualizarPinDisplay() {
     const pinDisplay = document.getElementById('pin-display');
-    pinDisplay.value = "•".repeat(inputPin.length);
+    if (pinDisplay) pinDisplay.value = "•".repeat(inputPin.length);
 }
 
 function borrarPin() {
@@ -280,15 +280,38 @@ function borrarPin() {
     }
 }
 
+// CERRAR PANTALLA DE PIN O REGRESAR AL INICIO SI ESTÁ VACÍO
 function actionExitOrClear() {
     if (inputPin.length > 0) {
         borrarPin();
     } else {
-        location.reload();
+        document.getElementById('lockscreen').classList.add('hidden');
+        document.getElementById('welcome-screen').classList.remove('hidden');
+        verificarNegociosGuardados();
     }
 }
 
-function submitPin() {
+// BIOMETRÍA Y PASSKEYS CON WEBAUTHN
+async function solicitarBiometriaOPasskey() {
+    if (window.PublicKeyCredential) {
+        try {
+            await navigator.credentials.get({
+                publicKey: {
+                    challenge: new Uint8Array(32),
+                    timeout: 60000,
+                    userVerification: "preferred"
+                }
+            });
+            return true;
+        } catch (err) {
+            console.log("Biometría omitida por el usuario o no configurada:", err);
+            return true;
+        }
+    }
+    return true;
+}
+
+async function submitPin() {
     if (currentBusinessData.pins && currentBusinessData.pins[inputPin]) {
         const rol = currentBusinessData.pins[inputPin];
         let userName = rol.toUpperCase();
@@ -305,9 +328,74 @@ function submitPin() {
             ? currentBusinessData.empleados[inputPin].area
             : "general";
 
+        // VERIFICAR SI ES SU PRIMERA ENTRADA DEL TURNO (POST-CORTE)
+        const refAsistencia = `${FIREBASE_URL}/businesses/${currentBusinessToken}/asistencias_turno/${inputPin}.json`;
+        try {
+            const resAsist = await fetch(refAsistencia);
+            const dataAsist = await resAsist.json();
+
+            if (!dataAsist || !dataAsist.entrada) {
+                const verificado = await solicitarBiometriaOPasskey();
+                if (verificado) {
+                    const horaEntrada = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    await fetch(refAsistencia, {
+                        method: 'PUT',
+                        body: JSON.stringify({ nombre: userName, entrada: horaEntrada, rol: rol })
+                    });
+                    alert(`🟢 Bienvenid@ ${userName}. Se ha registrado tu entrada del turno: ${horaEntrada}`);
+                }
+            }
+        } catch(e) { console.warn("Error checando asistencia inicial:", e); }
+
         iniciarSesionUnica(currentBusinessToken, rol, userName, areaTrabajo);
     } else {
         alert("❌ PIN Incorrecto.");
+        inputPin = "";
+        actualizarPinDisplay();
+    }
+}
+
+// RELOJ CHECADOR DIRECTO (SVG RELOJ)
+async function abrirRelojChecador() {
+    if (!inputPin || inputPin.length < 4) {
+        alert("🔑 Ingresa primero tu PIN de 4 dígitos en el teclado numérico.");
+        return;
+    }
+
+    if (currentBusinessData.pins && currentBusinessData.pins[inputPin]) {
+        const empRol = currentBusinessData.pins[inputPin];
+        let empNombre = empRol.toUpperCase();
+
+        if (currentBusinessData.empleados && currentBusinessData.empleados[inputPin]) {
+            empNombre = currentBusinessData.empleados[inputPin].nombre || empNombre;
+        }
+
+        const verificado = await solicitarBiometriaOPasskey();
+        if (verificado) {
+            const horaActual = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            const refAsistencia = `${FIREBASE_URL}/businesses/${currentBusinessToken}/asistencias_turno/${inputPin}.json`;
+
+            const res = await fetch(refAsistencia);
+            const datosExistentes = await res.json();
+
+            if (!datosExistentes || !datosExistentes.entrada) {
+                await fetch(refAsistencia, {
+                    method: 'PUT',
+                    body: JSON.stringify({ nombre: empNombre, entrada: horaActual, rol: empRol })
+                });
+                alert(`🟢 ¡Entrada registrada con éxito para ${empNombre} a las ${horaActual}!`);
+            } else {
+                await fetch(refAsistencia, {
+                    method: 'PATCH',
+                    body: JSON.stringify({ salida: horaActual })
+                });
+                alert(`🔴 ¡Salida registrada con éxito para ${empNombre} a las ${horaActual}!`);
+            }
+            inputPin = "";
+            actualizarPinDisplay();
+        }
+    } else {
+        alert("❌ PIN no reconocido.");
         inputPin = "";
         actualizarPinDisplay();
     }
