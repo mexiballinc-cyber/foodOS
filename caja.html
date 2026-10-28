@@ -1906,15 +1906,40 @@ ${listaCancelacionesTexto || 'Ninguna cancelación registrada.'}
             alert("📋 Reporte del corte copiado al portapapeles.");
         };
 
+        // IMPRESIÓN DIRECTA OPTIMIZADA (AUTO-PRINT / SIN GUARDAR ARCHIVOS BASURA)
         window.imprimirTicketDirecto = function(textoTicket) {
-            const ventanaImp = window.open('', '_blank', 'width=300,height=400');
-            ventanaImp.document.write(`<pre style="font-family:monospace; font-size:12px; white-space:pre-wrap;">${textoTicket}</pre>`);
+            const ventanaImp = window.open('', '_blank', 'width=350,height=500');
+            ventanaImp.document.write(`
+                <html>
+                    <head>
+                        <title>Imprimir Ticket - Food OS</title>
+                        <style>
+                            body {
+                                font-family: 'Courier New', Courier, monospace;
+                                font-size: 12px;
+                                margin: 0;
+                                padding: 10px;
+                                width: 280px;
+                            }
+                            pre {
+                                white-space: pre-wrap;
+                                word-wrap: break-word;
+                                margin: 0;
+                            }
+                        </style>
+                    </head>
+                    <body>
+                        <pre>${textoTicket}</pre>
+                        <script>
+                            window.onload = function() {
+                                window.print();
+                                setTimeout(function() { window.close(); }, 500);
+                            };
+                        <\/script>
+                    </body>
+                </html>
+            `);
             ventanaImp.document.close();
-            ventanaImp.focus();
-            setTimeout(() => {
-                ventanaImp.print();
-                ventanaImp.close();
-            }, 250);
         };
 
         function copiarCorteAlPortapapeles() {
