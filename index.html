@@ -16,7 +16,6 @@
             <img src="https://i.imgur.com/U0xdLiV.png" alt="Food OS Logo" class="food-os-logo">
         </div>
 
-        <!-- SECCIÓN DINÁMICA DE NEGOCIOS GUARDADOS -->
         <div id="saved-businesses-section" class="hidden glass-card saved-biz-wrapper">
             <p class="subtitle" style="margin-bottom:10px; font-weight:bold; color:#ff8800;">🏢 MIS NEGOCIOS REGISTRADOS</p>
             <div id="saved-businesses-list" class="saved-biz-container"></div>
@@ -56,7 +55,7 @@
     <!-- PANTALLA 3: LOCKSCREEN -->
     <div id="lockscreen" class="screen hidden">
         
-        <!-- BOTÓN DE REGRESO / REGRESAR A INICIO EN LA PANTALLA DE PIN -->
+        <!-- BOTÓN DE SALIR (X) A PANTALLA DE INICIO -->
         <button onclick="actionExitOrClear()" style="position: absolute; top: 20px; left: 20px; z-index: 10;" class="theme-picker" title="Regresar al Inicio">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5">
                 <line x1="18" y1="6" x2="6" y2="18"></line>
@@ -65,14 +64,6 @@
         </button>
 
         <div style="position: absolute; bottom: 25px; right: 25px; display: flex; gap: 12px; z-index: 10;">
-            <!-- BOTÓN RELOJ CHECADOR DE ASISTENCIAS -->
-            <button class="theme-picker" onclick="abrirRelojChecador()" title="Checar Entrada / Salida (Huella/Passkeys/Biometría)">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2">
-                    <circle cx="12" cy="12" r="10"></circle>
-                    <polyline points="12 6 12 12 16 14"></polyline>
-                </svg>
-            </button>
-
             <button class="theme-picker" onclick="abrirEscaner()" title="Escanear QR Gerente">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
                     <rect x="3" y="3" width="7" height="7" rx="1"></rect>
@@ -97,7 +88,17 @@
             </div>
 
             <div class="pin-card glass-card">
-                <p class="pin-instruction">Ingresar PIN</p>
+                <!-- ENCABEZADO CON BOTÓN DE RELOJ CHECADOR VISIBLE -->
+                <div style="display: flex; justify-content: space-between; items-center; align-items: center; margin-bottom: 8px;">
+                    <span class="pin-instruction" style="margin:0;">Ingresar PIN</span>
+                    <button onclick="abrirRelojChecador()" style="background: rgba(245, 158, 11, 0.2); border: 1px solid rgba(245, 158, 11, 0.5); color: #f59e0b; border-radius: 12px; padding: 4px 10px; font-size: 0.75rem; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 4px;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <polyline points="12 6 12 12 16 14"></polyline>
+                        </svg>
+                        <span>Checar</span>
+                    </button>
+                </div>
                 
                 <input type="password" id="pin-display" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off">
                 
