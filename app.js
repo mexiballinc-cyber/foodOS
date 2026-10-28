@@ -291,7 +291,7 @@ function actionExitOrClear() {
     }
 }
 
-// BIOMETRÍA Y PASSKEYS CON WEBAUTHN
+// BIOMETRÍA Y PASSKEYS CON WEBAUTHN (RETORNA FALSE SI CANCELA)
 async function solicitarBiometriaOPasskey() {
     if (window.PublicKeyCredential) {
         try {
@@ -305,10 +305,11 @@ async function solicitarBiometriaOPasskey() {
             return true;
         } catch (err) {
             console.log("Biometría omitida por el usuario o no configurada:", err);
-            return true;
+            alert("⚠️ Autenticación biométrica o llave cancelada.");
+            return false; // RECHAZA EL PASO SI CANCELA
         }
     }
-    return true;
+    return true; // Si el dispositivo/navegador antiguo no tiene WebAuthn, permite con PIN
 }
 
 async function submitPin() {
@@ -336,14 +337,17 @@ async function submitPin() {
 
             if (!dataAsist || !dataAsist.entrada) {
                 const verificado = await solicitarBiometriaOPasskey();
-                if (verificado) {
-                    const horaEntrada = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                    await fetch(refAsistencia, {
-                        method: 'PUT',
-                        body: JSON.stringify({ nombre: userName, entrada: horaEntrada, rol: rol })
-                    });
-                    alert(`🟢 Bienvenid@ ${userName}. Se ha registrado tu entrada del turno: ${horaEntrada}`);
+                if (!verificado) {
+                    inputPin = "";
+                    actualizarPinDisplay();
+                    return; // CANCELA SI NO PASA LA HUELLA/LLAVE
                 }
+                const horaEntrada = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                await fetch(refAsistencia, {
+                    method: 'PUT',
+                    body: JSON.stringify({ nombre: userName, entrada: horaEntrada, rol: rol })
+                });
+                alert(`🟢 Bienvenid@ ${userName}. Se ha registrado tu entrada del turno: ${horaEntrada}`);
             }
         } catch(e) { console.warn("Error checando asistencia inicial:", e); }
 
@@ -355,7 +359,7 @@ async function submitPin() {
     }
 }
 
-// RELOJ CHECADOR DIRECTO (SVG RELOJ)
+// RELOJ CHECADOR DIRECTO (BOTÓN SVG RELOJ)
 async function abrirRelojChecador() {
     if (!inputPin || inputPin.length < 4) {
         alert("🔑 Ingresa primero tu PIN de 4 dígitos en el teclado numérico.");
@@ -371,29 +375,33 @@ async function abrirRelojChecador() {
         }
 
         const verificado = await solicitarBiometriaOPasskey();
-        if (verificado) {
-            const horaActual = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-            const refAsistencia = `${FIREBASE_URL}/businesses/${currentBusinessToken}/asistencias_turno/${inputPin}.json`;
-
-            const res = await fetch(refAsistencia);
-            const datosExistentes = await res.json();
-
-            if (!datosExistentes || !datosExistentes.entrada) {
-                await fetch(refAsistencia, {
-                    method: 'PUT',
-                    body: JSON.stringify({ nombre: empNombre, entrada: horaActual, rol: empRol })
-                });
-                alert(`🟢 ¡Entrada registrada con éxito para ${empNombre} a las ${horaActual}!`);
-            } else {
-                await fetch(refAsistencia, {
-                    method: 'PATCH',
-                    body: JSON.stringify({ salida: horaActual })
-                });
-                alert(`🔴 ¡Salida registrada con éxito para ${empNombre} a las ${horaActual}!`);
-            }
+        if (!verificado) {
             inputPin = "";
             actualizarPinDisplay();
+            return; // CANCELA SI LE PICA A CANCELAR EN LA HUELLA
         }
+
+        const horaActual = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const refAsistencia = `${FIREBASE_URL}/businesses/${currentBusinessToken}/asistencias_turno/${inputPin}.json`;
+
+        const res = await fetch(refAsistencia);
+        const datosExistentes = await res.json();
+
+        if (!datosExistentes || !datosExistentes.entrada) {
+            await fetch(refAsistencia, {
+                method: 'PUT',
+                body: JSON.stringify({ nombre: empNombre, entrada: horaActual, rol: empRol })
+            });
+            alert(`🟢 ¡Entrada registrada con éxito para ${empNombre} a las ${horaActual}!`);
+        } else {
+            await fetch(refAsistencia, {
+                method: 'PATCH',
+                body: JSON.stringify({ salida: horaActual })
+            });
+            alert(`🔴 ¡Salida registrada con éxito para ${empNombre} a las ${horaActual}!`);
+        }
+        inputPin = "";
+        actualizarPinDisplay();
     } else {
         alert("❌ PIN no reconocido.");
         inputPin = "";
