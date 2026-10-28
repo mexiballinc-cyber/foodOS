@@ -291,25 +291,26 @@ function actionExitOrClear() {
     }
 }
 
-// BIOMETRÍA Y PASSKEYS CON WEBAUTHN (RETORNA FALSE SI CANCELA)
+// OPCIÓN A: CONFIRMACIÓN DE SEGURIDAD NATIVA Y FLUIDA
 async function solicitarBiometriaOPasskey() {
-    if (window.PublicKeyCredential) {
+    if (window.PublicKeyCredential && await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()) {
         try {
             await navigator.credentials.get({
                 publicKey: {
                     challenge: new Uint8Array(32),
-                    timeout: 60000,
-                    userVerification: "preferred"
+                    timeout: 30000,
+                    userVerification: "required"
                 }
             });
             return true;
         } catch (err) {
-            console.log("Biometría omitida por el usuario o no configurada:", err);
-            alert("⚠️ Autenticación biométrica o llave cancelada.");
-            return false; // RECHAZA EL PASO SI CANCELA
+            alert("⚠️ Confirmación de seguridad cancelada.");
+            return false;
         }
     }
-    return true; // Si el dispositivo/navegador antiguo no tiene WebAuthn, permite con PIN
+    
+    // Si no hay autenticador de plataforma activo o disponible, pide confirmación clara
+    return confirm("🔒 ¿Confirmar tu identidad para registrar asistencia?");
 }
 
 async function submitPin() {
@@ -340,7 +341,7 @@ async function submitPin() {
                 if (!verificado) {
                     inputPin = "";
                     actualizarPinDisplay();
-                    return; // CANCELA SI NO PASA LA HUELLA/LLAVE
+                    return; // Cancela y no entra si le picaron a cancelar
                 }
                 const horaEntrada = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                 await fetch(refAsistencia, {
@@ -359,7 +360,7 @@ async function submitPin() {
     }
 }
 
-// RELOJ CHECADOR DIRECTO (BOTÓN SVG RELOJ)
+// RELOJ CHECADOR DIRECTO (SVG RELOJ)
 async function abrirRelojChecador() {
     if (!inputPin || inputPin.length < 4) {
         alert("🔑 Ingresa primero tu PIN de 4 dígitos en el teclado numérico.");
@@ -378,7 +379,7 @@ async function abrirRelojChecador() {
         if (!verificado) {
             inputPin = "";
             actualizarPinDisplay();
-            return; // CANCELA SI LE PICA A CANCELAR EN LA HUELLA
+            return; // Cancela si le picaron a cancelar
         }
 
         const horaActual = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
